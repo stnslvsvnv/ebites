@@ -1,0 +1,22 @@
+models_config: "models.yaml"
+
+default:
+  models: ["deepseek-pro", "codex"]
+  max_turns: null
+  poll_interval_seconds: 1.0
+  auto_save: false
+  display_mode: "final"
+  save_raw_output: true
+
+presets:
+  fast:
+    models: ["deepseek-flash", "glm"]
+    max_turns: 4
+
+  strong:
+    models: ["deepseek-pro", "codex"]
+    max_turns: 8
+
+  codex:
+    models: ["codex", "codex"]
+    max_turns: 6

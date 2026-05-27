@@ -1,0 +1,176 @@
+#!/usr/bin/env python3
+"""Configuration loading for the debate method."""
+
+from __future__ import annotations
+
+import argparse
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+import yaml
+
+DEFAULT_DEBATE_CONFIG_PATH = Path("debate.yaml")
+DEFAULT_MODELS_CONFIG_PATH = Path("models.yaml")
+DEFAULT_DEBATE_STATE_PATH = Path(".debate/state.yaml")
+BUILT_IN_MODELS = ("deepseek-pro", "codex")
+
+
+@dataclass(frozen=True)
+class DebateRuntimeConfig:
+    """Resolved runtime settings for one debate session."""
+
+    models: tuple[str, str] = BUILT_IN_MODELS
+    max_turns: int | None = None
+    poll_interval_seconds: float = 1.0
+    auto_save: bool = False
+    display_mode: str = "final"
+    save_raw_output: bool = True
+
+
+def load_yaml_config(path: Path) -> dict[str, Any]:
+    """Load a YAML mapping; return an empty mapping when the file is absent."""
+
+    if not path.exists():
+        return {}
+    loaded = yaml.safe_load(path.read_text(encoding="utf-8"))
+    if loaded is None:
+        return {}
+    if not isinstance(loaded, dict):
+        raise ValueError(f"Config must be a YAML mapping: {path}")
+    return loaded
+
+
+def load_debate_config(path: Path = DEFAULT_DEBATE_CONFIG_PATH) -> dict[str, Any]:
+    return load_yaml_config(path)
+
+
+def load_models_config(path: Path = DEFAULT_MODELS_CONFIG_PATH) -> dict[str, Any]:
+    if not path.exists():
+        raise ValueError(f"{path} not found")
+    return load_yaml_config(path)
+
+
+def resolve_models_config_path(args: argparse.Namespace, debate_config: dict[str, Any]) -> Path:
+    """Resolve the model registry path from CLI, debate config, or default."""
+
+    raw_path = getattr(args, "models_config", None) or debate_config.get(
+        "models_config", DEFAULT_MODELS_CONFIG_PATH
+    )
+    if isinstance(raw_path, Path):
+        return raw_path.expanduser()
+    if not isinstance(raw_path, str) or not raw_path.strip():
+        raise ValueError("models_config must be a non-empty path")
+    return Path(raw_path.strip()).expanduser()
+
+
+def load_debate_state(path: Path = DEFAULT_DEBATE_STATE_PATH) -> dict[str, Any]:
+    return load_yaml_config(path)
+
+
+def save_debate_state(models: tuple[str, str], path: Path = DEFAULT_DEBATE_STATE_PATH) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {"last_models": [models[0], models[1]]}
+    path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+
+
+def resolve_debate_runtime_config(
+    args: argparse.Namespace,
+    debate_config: dict[str, Any],
+    debate_state: dict[str, Any] | None = None,
+) -> DebateRuntimeConfig:
+    """Resolve debate config with CLI overrides applied last."""
+
+    default_section = _mapping(debate_config.get("default"), "default")
+    preset_section: dict[str, Any] = {}
+    if getattr(args, "preset", None):
+        presets = _mapping(debate_config.get("presets", {}), "presets")
+        if args.preset not in presets:
+            available = ", ".join(sorted(presets)) or "none"
+            raise ValueError(f"Unknown debate preset '{args.preset}'. Available presets: {available}")
+        preset_section = _mapping(presets[args.preset], f"presets.{args.preset}")
+
+    merged = {**default_section, **preset_section}
+
+    state_section = debate_state or {}
+    models = _resolve_models(
+        state_section.get("last_models", merged.get("models", BUILT_IN_MODELS))
+    )
+    if getattr(args, "preset", None):
+        models = _resolve_models(merged.get("models", models))
+    if getattr(args, "models", None):
+        models = _resolve_models(args.models.split(","))
+
+    max_turns = merged.get("max_turns")
+    if getattr(args, "max_turns", None) is not None:
+        max_turns = args.max_turns
+
+    return DebateRuntimeConfig(
+        models=models,
+        max_turns=_optional_positive_int(max_turns, "max_turns"),
+        poll_interval_seconds=_positive_float(
+            merged.get("poll_interval_seconds", 1.0), "poll_interval_seconds"
+        ),
+        auto_save=_bool(merged.get("auto_save", False), "auto_save"),
+        display_mode=_choice(merged.get("display_mode", "final"), "display_mode", {"final", "live"}),
+        save_raw_output=_bool(merged.get("save_raw_output", True), "save_raw_output"),
+    )
+
+
+def _mapping(value: Any, name: str) -> dict[str, Any]:
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise ValueError(f"Debate config section '{name}' must be a mapping")
+    return value
+
+
+def _resolve_models(value: Any) -> tuple[str, str]:
+    if isinstance(value, tuple):
+        raw_models = list(value)
+    elif isinstance(value, list):
+        raw_models = value
+    else:
+        raise ValueError("Debate models must be a list with exactly two model names")
+
+    models = [str(model).strip() for model in raw_models]
+    if len(models) != 2 or not all(models):
+        raise ValueError("Debate models must contain exactly two non-empty model names")
+    return models[0], models[1]
+
+
+def _optional_positive_int(value: Any, name: str) -> int | None:
+    if value is None:
+        return None
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{name} must be a positive integer or null") from exc
+    if parsed <= 0:
+        raise ValueError(f"{name} must be a positive integer or null")
+    return parsed
+
+
+def _positive_float(value: Any, name: str) -> float:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{name} must be a positive number") from exc
+    if parsed <= 0:
+        raise ValueError(f"{name} must be a positive number")
+    return parsed
+
+
+def _bool(value: Any, name: str) -> bool:
+    if isinstance(value, bool):
+        return value
+    raise ValueError(f"{name} must be true or false")
+
+
+def _choice(value: Any, name: str, allowed: set[str]) -> str:
+    if not isinstance(value, str):
+        raise ValueError(f"{name} must be one of: {', '.join(sorted(allowed))}")
+    parsed = value.strip().lower()
+    if parsed not in allowed:
+        raise ValueError(f"{name} must be one of: {', '.join(sorted(allowed))}")
+    return parsed

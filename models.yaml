@@ -1,0 +1,27 @@
+workers:
+  codex:
+    description: "Codex CLI"
+    launch: 'codex exec "{{PROMPT}}"'
+
+  deepseek-pro:
+    description: "DeepSeek Pro via opencode"
+    launch: 'opencode run --model deepseek/deepseek-v4-pro --variant max "{{PROMPT}}"'
+
+  deepseek-flash:
+    description: "DeepSeek Flash via opencode"
+    launch: 'opencode run --model deepseek/deepseek-v4-flash "{{PROMPT}}"'
+
+  glm:
+    description: "GLM via opencode"
+    launch: 'opencode run --model glm "{{PROMPT}}"'
+
+profiles:
+  codex:
+    investigation: "codex"
+    implementation: "codex"
+    review: "codex"
+
+  fast:
+    investigation: "deepseek-flash"
+    implementation: "glm"
+    review: "deepseek-flash"

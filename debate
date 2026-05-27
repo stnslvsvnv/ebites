@@ -1,0 +1,5 @@
+#!/usr/bin/env zsh
+# Local launcher for source checkouts.
+
+cd "$(dirname "$0")" || exit 1
+PYTHONPATH="$PWD/src${PYTHONPATH:+:$PYTHONPATH}" exec python3 -m debate.cli "$@"

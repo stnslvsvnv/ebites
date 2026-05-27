@@ -1,0 +1,9 @@
+.debate/
+.venv/
+.pytest_cache/
+.ruff_cache/
+__pycache__/
+*.egg-info/
+build/
+dist/
+.DS_Store
