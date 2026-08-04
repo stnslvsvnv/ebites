@@ -41,28 +41,28 @@ workers:
   # === Implementation ===
 
   glm:
-    launch: 'opencode run --model opencode-go/glm-5.2 --dangerously-skip-permissions "{{PROMPT}}"'
+    launch: 'opencode run --model 9router/glm-5.2 --variant max --dangerously-skip-permissions "{{PROMPT}}"'
     description: "GLM 5.2"
 
   glm-go:
-    launch: 'opencode run --model opencode-go/glm-5.2 --dangerously-skip-permissions "{{PROMPT}}"'
-    description: "GLM 5.2 via opencode-go"
+    launch: 'opencode run --model 9router/glm-5.2 --variant max --dangerously-skip-permissions "{{PROMPT}}"'
+    description: "GLM 5.2 via 9router"
 
   glm-9router:
     launch: 'opencode run --pure --model 9router/glm-cn/glm-5.2 --variant max --dangerously-skip-permissions --print-logs "{{PROMPT}}"'
-    description: "GLM 5.2 via 9router (5A-compatible)"
+    description: "GLM 5.2 via 9router cn-route (5A-compatible)"
 
   qwen:
-    launch: 'opencode run --model opencode-go/qwen3.8-max --dangerously-skip-permissions "{{PROMPT}}"'
+    launch: 'opencode run --model 9router/qwen3.8-max --variant max --dangerously-skip-permissions "{{PROMPT}}"'
     description: "Qwen3.8 Max"
 
   grok:
-    launch: 'opencode run --model opencode-go/grok-4.5 --dangerously-skip-permissions "{{PROMPT}}"'
-    description: "Grok 4.5 via opencode-go"
+    launch: 'opencode run --model 9router/grok-4.5 --variant max --dangerously-skip-permissions "{{PROMPT}}"'
+    description: "Grok 4.5 via 9router"
 
   kimi-k3:
-    launch: 'opencode run --model opencode-go/kimi-k3 --dangerously-skip-permissions "{{PROMPT}}"'
-    description: "Kimi K3 via opencode-go"
+    launch: 'opencode run --model 9router/kimi-k3 --variant max --dangerously-skip-permissions "{{PROMPT}}"'
+    description: "Kimi K3 via 9router"
 
   # === Fast tasks ===
 
