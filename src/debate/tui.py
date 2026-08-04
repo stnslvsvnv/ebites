@@ -145,8 +145,7 @@ class DebateApp(App):
     }
 
     #status {
-        height: auto;
-        min-height: 2;
+        height: 7;
         background: $panel;
         padding: 0 1;
         layer: base;
@@ -278,11 +277,16 @@ class DebateApp(App):
     def status_text(self, state: str) -> str:
         from .orchestrator import ALL_AGENT_IDS
 
+        def _truncate(s: str, n: int = 40) -> str:
+            return s if len(s) <= n else s[: n - 1] + "…"
+
         lines = []
         for agent_id in ALL_AGENT_IDS:
             if agent_id in self.orchestrator.agent_runners:
                 runner = self.orchestrator.agent_runners[agent_id]
-                lines.append(f"Agent {agent_id}: {runner.model} ({runner.description})")
+                lines.append(
+                    f"Agent {agent_id}: {runner.model} ({_truncate(runner.description)})"
+                )
             else:
                 lines.append(f"Agent {agent_id}: off")
         lines.append(f"reasoning: {self.orchestrator.reasoning_level} | {state}")
@@ -696,7 +700,31 @@ class DebateApp(App):
             self.configure_input("Type the debate prompt...", COMMAND_SUGGESTIONS)
 
     async def action_pause(self) -> None:
-        """Pause debate"""
+        """Smart ESC: stop a running agent, or toggle pause idle.
+
+        When an agent is actively running, ESC interrupts it and resets the
+        debate back to the 'Enter initial prompt' prompt so the user can
+        start over. When nothing is running, ESC toggles a passive pause
+        flag (legacy behavior) that the run-debate loop observes.
+        """
+
+        if self.active_agent and self.orchestrator.is_agent_running(self.active_agent):
+            # Hard stop: cancel the debate task and clean up the whole session.
+            if self.debate_task and not self.debate_task.done():
+                self.debate_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await self.debate_task
+            self.orchestrator.interrupt_agent(self.active_agent)
+            await asyncio.to_thread(self.orchestrator.cleanup)
+            self.active_agent = None
+            self.current_turn_display = None
+            self.current_turn_interrupted = False
+            self.pending_interventions.clear()
+            self.is_paused = False
+            await self.start_new_debate()
+            self.notify("Debate stopped, enter a new prompt")
+            return
+
         self.is_paused = not self.is_paused
         status = "paused" if self.is_paused else "resumed"
         self.query_one("#status", Static).update(self.status_text(status.title()))

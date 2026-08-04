@@ -53,11 +53,11 @@ workers:
   # === DeepSeek ===
 
   deepseek-flash:
-    launch: 'opencode run --model 9router/deepseek-v4-flash --variant max --dangerously-skip-permissions --print-logs "{{PROMPT}}"'
+    launch: 'opencode run --model 9router/deepseek-v4-flash --variant max --dangerously-skip-permissions "{{PROMPT}}"'
     description: "DS4 Flash via 9router"
 
   deepseek-pro:
-    launch: 'opencode run --model 9router/deepseek-v4-pro --variant max --dangerously-skip-permissions --print-logs "{{PROMPT}}"'
+    launch: 'opencode run --model 9router/deepseek-v4-pro --variant max --dangerously-skip-permissions "{{PROMPT}}"'
     description: "DS4 Pro via 9router"
 
   # === GLM ===

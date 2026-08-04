@@ -746,8 +746,7 @@ def test_tui_status_strip_has_compact_top_gap():
     css = DebateApp.CSS
 
     assert "#status" in css
-    assert "height: auto;" in css
-    assert "min-height: 2;" in css
+    assert "height: 7;" in css
     assert "padding: 0 1;" in css
 
 
