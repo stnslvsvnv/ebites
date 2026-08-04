@@ -3,6 +3,7 @@
 
 import asyncio
 import re
+import time
 from contextlib import suppress
 from pathlib import Path
 from typing import Any, Optional
@@ -20,6 +21,7 @@ from .orchestrator import AGENT_IDS, DebateOrchestrator
 CONSENSUS_TEXT = "CONSENSUS REACHED"
 COMMAND_SUGGESTIONS = ("/new", "/models", "/save", "/reasoning max", "/reasoning medium")
 CONSENSUS_ACTION_SUGGESTIONS = ("new", "save", "continue")
+QUIT_DOUBLE_CTRL_C_WINDOW_SECONDS = 2.0
 CONSENSUS_CONTINUE_MESSAGE = (
     "Continue after the previous consensus. Re-open the debate, explore remaining "
     "trade-offs, risks, and alternatives before any new consensus."
@@ -143,10 +145,12 @@ class DebateApp(App):
     }
 
     #status {
-        height: 2;
+        height: auto;
+        min-height: 2;
         background: $panel;
-        padding: 1 0 0 0;
+        padding: 0 1;
         layer: base;
+        text-align: left;
     }
 
     #debate-view {
@@ -258,6 +262,7 @@ class DebateApp(App):
         self.model_selection_active = False
         self.awaiting_consensus_action = False
         self._reasoning_warn_shown = False
+        self._last_quit_press: float = 0.0
         self.next_agent = self.orchestrator.first_agent_id
         self.next_turn_number = 1
         self.next_turn_is_first = True
@@ -271,13 +276,12 @@ class DebateApp(App):
             pass
 
     def status_text(self, state: str) -> str:
-        parts = []
+        lines = []
         for agent_id in self.orchestrator.active_agent_ids:
             runner = self.orchestrator.agent_runners[agent_id]
-            parts.append(f"Agent {agent_id}: {runner.model} ({runner.description})")
-        parts.append(f"reasoning: {self.orchestrator.reasoning_level}")
-        parts.append(state)
-        return " | ".join(parts)
+            lines.append(f"Agent {agent_id}: {runner.model} ({runner.description})")
+        lines.append(f"reasoning: {self.orchestrator.reasoning_level} | {state}")
+        return "\n".join(lines)
 
     def reset_turn_cursor(self) -> None:
         self.next_agent = self.orchestrator.first_agent_id
@@ -710,7 +714,21 @@ class DebateApp(App):
         await asyncio.sleep(0)
 
     async def action_quit(self) -> None:
-        """Quit and cleanup"""
+        """Quit on double Ctrl+C within QUIT_DOUBLE_CTRL_C_WINDOW_SECONDS.
+
+        A single Ctrl+C notifies the user to press again to confirm, so terminal
+        text selection by mouse is not blown away by an accidental first press.
+        """
+
+        now = time.monotonic()
+        if self._last_quit_press and now - self._last_quit_press <= QUIT_DOUBLE_CTRL_C_WINDOW_SECONDS:
+            self._last_quit_press = 0.0
+            await self._do_quit()
+            return
+        self._last_quit_press = now
+        self.notify("Press Ctrl+C again to quit", timeout=2)
+
+    async def _do_quit(self) -> None:
         self._set_terminal_title(DEFAULT_TERMINAL_TITLE)
         if self._tty is not None:
             try:

@@ -1,4 +1,5 @@
 import shlex
+import time
 from argparse import Namespace
 from pathlib import Path
 
@@ -745,8 +746,9 @@ def test_tui_status_strip_has_compact_top_gap():
     css = DebateApp.CSS
 
     assert "#status" in css
-    assert "height: 2;" in css
-    assert "padding: 1 0 0 0;" in css
+    assert "height: auto;" in css
+    assert "min-height: 2;" in css
+    assert "padding: 0 1;" in css
 
 
 def test_initial_prompt_frame_uses_plain_text_border():
@@ -816,6 +818,8 @@ async def test_tui_quit_shows_closing_overlay_before_cleanup(monkeypatch):
 
     monkeypatch.setattr(app, "show_closing_overlay", fake_show_closing_overlay)
     monkeypatch.setattr(orchestrator, "cleanup", lambda: events.append("cleanup"))
+    # double Ctrl+C: prime first press so action_quit triggers _do_quit immediately
+    app._last_quit_press = time.monotonic()
 
     async with app.run_test():
         await app.action_quit()
