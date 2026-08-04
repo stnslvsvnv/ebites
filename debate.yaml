@@ -48,7 +48,7 @@ workers:
   codex:
     launch: 'codex exec -c model="cx/gpt-5.6-sol" -c model_reasoning_effort="high" "{{PROMPT}}"'
     prompt_file_launch: 'codex exec -c model="cx/gpt-5.6-sol" -c model_reasoning_effort="high" < {{PROMPT_FILE}}'
-    description: "Codex CLI (cx/gpt-5.6-sol, high reasoning)"
+    description: "Codex CLI (cx/gpt-5.6-sol)"
 
   # === DeepSeek ===
 

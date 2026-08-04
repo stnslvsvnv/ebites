@@ -281,15 +281,18 @@ class DebateApp(App):
             return s if len(s) <= n else s[: n - 1] + "…"
 
         lines = []
+        level = self.orchestrator.reasoning_level
         for agent_id in ALL_AGENT_IDS:
             if agent_id in self.orchestrator.agent_runners:
                 runner = self.orchestrator.agent_runners[agent_id]
                 lines.append(
-                    f"Agent {agent_id}: {runner.model} ({_truncate(runner.description)})"
+                    f"Agent {agent_id}: {runner.model}"
+                    + (f" [{level}]" if runner.supports_reasoning() else "")
+                    + f" ({_truncate(runner.description)})"
                 )
             else:
                 lines.append(f"Agent {agent_id}: off")
-        lines.append(f"reasoning: {self.orchestrator.reasoning_level} | {state}")
+        lines.append(f"reasoning: {level} | {state}")
         return "\n".join(lines)
 
     def reset_turn_cursor(self) -> None:
