@@ -496,7 +496,7 @@ class DebateApp(App):
         self.orchestrator.add_user_intervention(message or CONSENSUS_CONTINUE_MESSAGE)
         self.query_one("#status", Static).update(self.status_text("Running"))
         self.query_one("#help", Static).update(
-            "Commands: /new | /models | /save | ESC - pause | Ctrl+C - quit"
+            "Commands: /new | /models | /save | /reasoning max|medium | ESC - pause | double Ctrl+C - quit"
         )
         self.configure_input(
             "Type intervention or command (/new, /save, /models)...",
@@ -686,7 +686,7 @@ class DebateApp(App):
                 self.status_text("Saved - type a new prompt to start a new debate")
             )
             self.query_one("#help", Static).update(
-                "Commands: /new | /models | /save | ESC - pause | Ctrl+C - quit"
+                "Commands: /new | /models | /save | /reasoning max|medium | ESC - pause | double Ctrl+C - quit"
             )
             self.configure_input("Type the debate prompt...", COMMAND_SUGGESTIONS)
 
