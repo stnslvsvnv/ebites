@@ -1,25 +1,95 @@
+# Worker Model Configuration
+#
+# Human/agent-readable launch table for debate workers. The orchestrator copies
+# a worker's `launch` line and replaces `{{PROMPT}}` with the actual prompt
+# argument, usually `"$(cat .../prompt.txt)"`. Workers that support stdin/file
+# redirection can define `prompt_file_launch` with `{{PROMPT_FILE}}`.
+
 workers:
-  codex:
-    description: "Codex CLI"
-    launch: 'codex exec "{{PROMPT}}"'
+  # === Investigation / strong reasoning ===
 
   deepseek-pro:
-    description: "DeepSeek Pro via opencode"
-    launch: 'opencode run --model deepseek/deepseek-v4-pro --variant max "{{PROMPT}}"'
+    launch: 'opencode run --model deepseek/deepseek-v4-pro --variant max --dangerously-skip-permissions "{{PROMPT}}"'
+    description: "DS4 Pro"
 
-  deepseek-flash:
-    description: "DeepSeek Flash via opencode"
-    launch: 'opencode run --model deepseek/deepseek-v4-flash "{{PROMPT}}"'
+  deepseek-pro-9router:
+    launch: 'opencode run --pure --model 9router/ds/deepseek-v4-pro --variant max --dangerously-skip-permissions --print-logs "{{PROMPT}}"'
+    description: "DS4 Pro via 9router (5A-compatible)"
+
+  # === Implementation ===
 
   glm:
-    description: "GLM via opencode"
-    launch: 'opencode run --model glm "{{PROMPT}}"'
+    launch: 'opencode run --model opencode-go/glm-5.2 --dangerously-skip-permissions "{{PROMPT}}"'
+    description: "GLM 5.2"
 
-profiles:
+  glm-9router:
+    launch: 'opencode run --pure --model 9router/glm-cn/glm-5.2 --variant max --dangerously-skip-permissions --print-logs "{{PROMPT}}"'
+    description: "GLM 5.2 via 9router (5A-compatible)"
+
+  qwen:
+    launch: 'opencode run --model opencode-go/qwen3.7-max --dangerously-skip-permissions "{{PROMPT}}"'
+    description: "Qwen3.7 Max"
+
+  # === Fast tasks ===
+
+  deepseek-flash:
+    launch: 'opencode run --model deepseek/deepseek-v4-flash --variant max --dangerously-skip-permissions "{{PROMPT}}"'
+    description: "DS4 Flash"
+
+  # === Claude Fable — canonical 5A debate Claude slot ===
+  # Must run through the `claude` binary. Do not route Fable through OpenCode.
+  claude-fable:
+    launch: 'printf "%s" "{{PROMPT}}" | CLAUDE_CODE_MAX_RETRIES=0 claude -p --model fable --effort max --permission-mode bypassPermissions --setting-sources user --disable-slash-commands --no-session-persistence --tools ""'
+    prompt_file_launch: 'CLAUDE_CODE_MAX_RETRIES=0 claude -p --model fable --effort max --permission-mode bypassPermissions --setting-sources user --disable-slash-commands --no-session-persistence --tools "" < {{PROMPT_FILE}}'
+    description: "Claude Fable, max effort"
+    timeout_seconds: 180
+
+  # === Claude standalone CLI (Opus) ===
+  claude:
+    launch: 'printf "%s" "{{PROMPT}}" | claude --bare --add-dir . --print'
+    prompt_file_launch: 'claude --bare --add-dir . --print < {{PROMPT_FILE}}'
+    description: "Opus latest"
+
+  # === Codex ===
   codex:
-    investigation: "codex"
-    implementation: "codex"
-    review: "codex"
+    launch: 'codex exec "{{PROMPT}}"'
+    prompt_file_launch: 'codex exec < {{PROMPT_FILE}}'
+    description: "OpenAI Codex"
+
+  # === DeepSeek via direct API ===
+  deepseek-api-pro:
+    launch: 'opencode run --model deepseek/deepseek-v4-pro --variant max --dangerously-skip-permissions "{{PROMPT}}"'
+    description: "DeepSeek v4 Pro via direct API"
+
+  deepseek-api-flash:
+    launch: 'opencode run --model deepseek/deepseek-v4-flash --dangerously-skip-permissions "{{PROMPT}}"'
+    description: "DeepSeek v4 Flash via direct API"
+
+  deepseek-reasoner:
+    launch: 'opencode run --model deepseek/deepseek-reasoner --dangerously-skip-permissions "{{PROMPT}}"'
+    description: "DeepSeek Reasoner (R1) via direct API"
+
+# Prompt substitution contract:
+#   launch line: workers.<name>.launch with {{PROMPT}} replaced by prompt text
+#   optional prompt-file line: workers.<name>.prompt_file_launch with
+#       {{PROMPT_FILE}} replaced by the quoted prompt file path
+
+# Готовые профили для быстрого переключения
+profiles:
+  current:
+    investigation: "deepseek-pro"
+    implementation: "glm"
+    review: "deepseek-pro"
+
+  claude:
+    investigation: "claude"
+    implementation: "claude"
+    review: "claude"
+
+  deepseek-api:
+    investigation: "deepseek-api-pro"
+    implementation: "deepseek-api-pro"
+    review: "deepseek-api-pro"
 
   fast:
     investigation: "deepseek-flash"

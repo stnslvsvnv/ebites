@@ -6,21 +6,22 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 import yaml
 
 DEFAULT_DEBATE_CONFIG_PATH = Path("debate.yaml")
 DEFAULT_MODELS_CONFIG_PATH = Path("models.yaml")
 DEFAULT_DEBATE_STATE_PATH = Path(".debate/state.yaml")
-BUILT_IN_MODELS = ("deepseek-pro", "codex")
+OFF_MODEL_NAME = "off"
+BUILT_IN_MODELS = ("deepseek-pro", "codex", OFF_MODEL_NAME)
 
 
 @dataclass(frozen=True)
 class DebateRuntimeConfig:
     """Resolved runtime settings for one debate session."""
 
-    models: tuple[str, str] = BUILT_IN_MODELS
+    models: tuple[str, ...] = BUILT_IN_MODELS
     max_turns: int | None = None
     poll_interval_seconds: float = 1.0
     auto_save: bool = False
@@ -68,9 +69,9 @@ def load_debate_state(path: Path = DEFAULT_DEBATE_STATE_PATH) -> dict[str, Any]:
     return load_yaml_config(path)
 
 
-def save_debate_state(models: tuple[str, str], path: Path = DEFAULT_DEBATE_STATE_PATH) -> None:
+def save_debate_state(models: Sequence[str], path: Path = DEFAULT_DEBATE_STATE_PATH) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    payload = {"last_models": [models[0], models[1]]}
+    payload = {"last_models": list(_resolve_models(models))}
     path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
 
 
@@ -87,7 +88,9 @@ def resolve_debate_runtime_config(
         presets = _mapping(debate_config.get("presets", {}), "presets")
         if args.preset not in presets:
             available = ", ".join(sorted(presets)) or "none"
-            raise ValueError(f"Unknown debate preset '{args.preset}'. Available presets: {available}")
+            raise ValueError(
+                f"Unknown debate preset '{args.preset}'. Available presets: {available}"
+            )
         preset_section = _mapping(presets[args.preset], f"presets.{args.preset}")
 
     merged = {**default_section, **preset_section}
@@ -112,7 +115,9 @@ def resolve_debate_runtime_config(
             merged.get("poll_interval_seconds", 1.0), "poll_interval_seconds"
         ),
         auto_save=_bool(merged.get("auto_save", False), "auto_save"),
-        display_mode=_choice(merged.get("display_mode", "final"), "display_mode", {"final", "live"}),
+        display_mode=_choice(
+            merged.get("display_mode", "final"), "display_mode", {"final", "live"}
+        ),
         save_raw_output=_bool(merged.get("save_raw_output", True), "save_raw_output"),
     )
 
@@ -125,18 +130,30 @@ def _mapping(value: Any, name: str) -> dict[str, Any]:
     return value
 
 
-def _resolve_models(value: Any) -> tuple[str, str]:
+def _resolve_models(value: Any) -> tuple[str, ...]:
     if isinstance(value, tuple):
         raw_models = list(value)
     elif isinstance(value, list):
         raw_models = value
     else:
-        raise ValueError("Debate models must be a list with exactly two model names")
+        raise ValueError("Debate models must be a list with two or three model names")
 
-    models = [str(model).strip() for model in raw_models]
-    if len(models) != 2 or not all(models):
-        raise ValueError("Debate models must contain exactly two non-empty model names")
-    return models[0], models[1]
+    models = [_normalize_model_name(model) for model in raw_models]
+    if len(models) < 2 or len(models) > 5 or not all(models):
+        raise ValueError("Debate models must contain between two and five non-empty model names")
+    models = [OFF_MODEL_NAME if model.lower() == OFF_MODEL_NAME else model for model in models]
+    active_models = [model for model in models if model != OFF_MODEL_NAME]
+    if len(active_models) < 2:
+        raise ValueError("Debate models must include at least two active models")
+    while len(models) < 5:
+        models.append(OFF_MODEL_NAME)
+    return tuple(models)
+
+
+def _normalize_model_name(value: Any) -> str:
+    if value is False:
+        return OFF_MODEL_NAME
+    return str(value).strip()
 
 
 def _optional_positive_int(value: Any, name: str) -> int | None:

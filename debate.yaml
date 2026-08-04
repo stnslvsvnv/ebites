@@ -1,7 +1,7 @@
 models_config: "models.yaml"
 
 default:
-  models: ["deepseek-pro", "codex"]
+  models: ["deepseek-pro", "codex", "off"]
   max_turns: null
   poll_interval_seconds: 1.0
   auto_save: false
@@ -10,13 +10,17 @@ default:
 
 presets:
   fast:
-    models: ["deepseek-flash", "glm"]
+    models: ["deepseek-flash", "glm", "off"]
     max_turns: 4
 
   strong:
-    models: ["deepseek-pro", "codex"]
+    models: ["deepseek-pro", "codex", "off"]
     max_turns: 8
 
-  codex:
-    models: ["codex", "codex"]
+  claude:
+    models: ["claude", "claude", "off"]
+    max_turns: 6
+
+  council:
+    models: ["deepseek-pro", "codex", "glm", "qwen", "off"]
     max_turns: 6

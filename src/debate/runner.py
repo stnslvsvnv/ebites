@@ -99,6 +99,7 @@ class ModelRunner:
 
         self.name = model_config.get("name", model_config.get("model", "unknown"))
         self.launch_template = model_config["launch"]
+        self.prompt_file_launch_template = model_config.get("prompt_file_launch")
         self.description = model_config.get("description", self.name)
         self.tmux = tmux_client or TmuxClient()
         self.session_root = Path(session_root)
@@ -154,7 +155,9 @@ class ModelRunner:
             return
         self.tmux.send_ctrl_c(process.session_name)
         time.sleep(0.2)
-        self.tmux.send_command(process.session_name, self._sentinel_print_command(process.sentinel, 130))
+        self.tmux.send_command(
+            process.session_name, self._sentinel_print_command(process.sentinel, 130)
+        )
 
     def stop(self, session_name: str) -> None:
         if not self.tmux.has_session(session_name):
@@ -178,9 +181,32 @@ class ModelRunner:
         prompt_file.write_text(prompt, encoding="utf-8")
         return prompt_file
 
+    def _write_wrapper_script(self, prompt_file: Path) -> Path:
+        """Generate an executable zsh wrapper that reads the prompt from a file.
+
+        The wrapper keeps the prompt out of the shell command line and passes it
+        to the worker's launch template as a single safely-quoted argument.
+        """
+        wrapper_file = prompt_file.with_name(prompt_file.stem + "_wrapper.zsh")
+        launch_command = self.launch_template.replace("{{PROMPT}}", "$__debate_prompt")
+        script = (
+            "#!/usr/bin/env zsh\n"
+            f"__debate_prompt=$(< {shlex.quote(str(prompt_file))})\n"
+            f"{launch_command}\n"
+        )
+        wrapper_file.write_text(script, encoding="utf-8")
+        wrapper_file.chmod(0o755)
+        return wrapper_file
+
     def _build_command(self, prompt_file: Path, start_marker: str, sentinel: str) -> str:
-        prompt_arg = f"$(cat {shlex.quote(str(prompt_file))})"
-        launch_command = self.launch_template.replace("{{PROMPT}}", prompt_arg)
+        if self.prompt_file_launch_template:
+            prompt_file_arg = shlex.quote(str(prompt_file))
+            launch_command = self.prompt_file_launch_template.replace(
+                "{{PROMPT_FILE}}", prompt_file_arg
+            )
+        else:
+            wrapper_file = self._write_wrapper_script(prompt_file)
+            launch_command = shlex.quote(str(wrapper_file))
         return (
             f"printf '\\n{start_marker}\\n'; "
             f"{launch_command}; "

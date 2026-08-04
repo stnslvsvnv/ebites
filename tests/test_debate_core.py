@@ -1,10 +1,9 @@
-import sys
+import shlex
 from argparse import Namespace
 from pathlib import Path
 
 import pytest
-
-sys.path.insert(0, str(Path("src").resolve()))
+from textual.widgets import Input
 
 from debate.cli import resolve_model_selection
 from debate.config import (
@@ -15,9 +14,9 @@ from debate.config import (
     resolve_models_config_path,
     save_debate_state,
 )
-from debate.orchestrator import DebateOrchestrator
+from debate.orchestrator import DebateOrchestrator, prune_unsaved_debate_tmp
 from debate.runner import ModelRunner
-from debate.tui import DebateApp
+from debate.tui import ClosingOverlay, DebateApp, DebateView, TurnDisplay, markdown_to_rich
 
 
 def _models_yaml():
@@ -108,9 +107,9 @@ def _worker(name="codex", launch='codex exec "{{PROMPT}}"'):
 
 def test_resolve_model_selection_uses_named_launch_configs():
     models_yaml = _models_yaml()
-    runtime_config = DebateRuntimeConfig(models=("deepseek-pro", "codex"))
+    runtime_config = DebateRuntimeConfig(models=("deepseek-pro", "codex", "off"))
 
-    model_a, model_b = resolve_model_selection(
+    model_a, model_b, model_c, model_d, model_e = resolve_model_selection(
         _args(),
         models_yaml,
         runtime_config,
@@ -120,25 +119,47 @@ def test_resolve_model_selection_uses_named_launch_configs():
     assert model_a["launch"].startswith("opencode run")
     assert model_b["name"] == "codex"
     assert model_b["launch"] == 'codex exec "{{PROMPT}}"'
+    assert model_c is None
+    assert model_d is None
+    assert model_e is None
 
 
 def test_resolve_model_selection_trims_custom_models():
-    runtime_config = DebateRuntimeConfig(models=("deepseek-pro", "glm"))
+    runtime_config = DebateRuntimeConfig(models=("deepseek-pro", "glm", "off"))
 
-    model_a, model_b = resolve_model_selection(
-        _args(models=" codex, glm "),
+    model_a, model_b, model_c, model_d, model_e = resolve_model_selection(
+        _args(models=" codex, glm, off "),
         _models_yaml(),
         runtime_config,
     )
 
     assert model_a["name"] == "codex"
     assert model_b["name"] == "glm"
+    assert model_c is None
+    assert model_d is None
+    assert model_e is None
+
+
+def test_resolve_model_selection_accepts_two_models_as_third_off():
+    runtime_config = DebateRuntimeConfig(models=("deepseek-pro", "glm", "off"))
+
+    model_a, model_b, model_c, model_d, model_e = resolve_model_selection(
+        _args(models="codex,glm"),
+        _models_yaml(),
+        runtime_config,
+    )
+
+    assert model_a["name"] == "codex"
+    assert model_b["name"] == "glm"
+    assert model_c is None
+    assert model_d is None
+    assert model_e is None
 
 
 def test_debate_runtime_config_reads_default_models():
     config_yaml = {
         "default": {
-            "models": ["glm", "deepseek-pro"],
+            "models": ["glm", "deepseek-pro", "off"],
             "max_turns": 7,
             "display_mode": "final",
             "save_raw_output": True,
@@ -146,11 +167,9 @@ def test_debate_runtime_config_reads_default_models():
         "presets": {"fast": {"models": ["deepseek-pro", "glm"], "max_turns": 3}},
     }
 
-    runtime_config = resolve_debate_runtime_config(
-        _args(), config_yaml
-    )
+    runtime_config = resolve_debate_runtime_config(_args(), config_yaml)
 
-    assert runtime_config.models == ("glm", "deepseek-pro")
+    assert runtime_config.models == ("glm", "deepseek-pro", "off", "off", "off")
     assert runtime_config.max_turns == 7
     assert runtime_config.display_mode == "final"
     assert runtime_config.save_raw_output is True
@@ -158,47 +177,65 @@ def test_debate_runtime_config_reads_default_models():
 
 def test_debate_runtime_config_supports_presets_and_cli_overrides():
     config_yaml = {
-        "default": {"models": ["codex", "deepseek-pro"], "max_turns": None},
-        "presets": {"fast": {"models": ["deepseek-flash", "glm"], "max_turns": 4}},
+        "default": {"models": ["codex", "deepseek-pro", "off"], "max_turns": None},
+        "presets": {"fast": {"models": ["deepseek-flash", "glm", "off"], "max_turns": 4}},
     }
 
     runtime_config = resolve_debate_runtime_config(
-        _args(models=" codex, glm ", preset="fast", max_turns=2), config_yaml
+        _args(models=" codex, glm, claude ", preset="fast", max_turns=2), config_yaml
     )
 
-    assert runtime_config.models == ("codex", "glm")
+    assert runtime_config.models == ("codex", "glm", "claude", "off", "off")
     assert runtime_config.max_turns == 2
 
 
 def test_debate_runtime_config_uses_last_state_before_default():
-    config_yaml = {"default": {"models": ["deepseek-pro", "codex"], "max_turns": None}}
-    state_yaml = {"last_models": ["glm", "deepseek-pro"]}
+    config_yaml = {"default": {"models": ["deepseek-pro", "codex", "off"], "max_turns": None}}
+    state_yaml = {"last_models": ["glm", "deepseek-pro", "off"]}
 
     runtime_config = resolve_debate_runtime_config(_args(), config_yaml, state_yaml)
 
-    assert runtime_config.models == ("glm", "deepseek-pro")
+    assert runtime_config.models == ("glm", "deepseek-pro", "off", "off", "off")
 
 
 def test_debate_runtime_config_cli_overrides_last_state():
-    config_yaml = {"default": {"models": ["deepseek-pro", "codex"]}}
-    state_yaml = {"last_models": ["glm", "deepseek-pro"]}
+    config_yaml = {"default": {"models": ["deepseek-pro", "codex", "off"]}}
+    state_yaml = {"last_models": ["glm", "deepseek-pro", "off"]}
 
     runtime_config = resolve_debate_runtime_config(
-        _args(models="codex,glm"), config_yaml, state_yaml
+        _args(models="codex,glm,off"), config_yaml, state_yaml
     )
 
-    assert runtime_config.models == ("codex", "glm")
+    assert runtime_config.models == ("codex", "glm", "off", "off", "off")
+
+
+def test_debate_runtime_config_rejects_less_than_two_active_models():
+    config_yaml = {"default": {"models": ["codex", "off", "off"]}}
+
+    with pytest.raises(ValueError, match="at least two active"):
+        resolve_debate_runtime_config(_args(), config_yaml)
+
+
+def test_debate_runtime_config_treats_yaml_false_as_off_slot():
+    config_yaml = {"default": {"models": ["deepseek-pro", "codex", "off"]}}
+    state_yaml = {"last_models": ["codex", "claude", False]}
+
+    runtime_config = resolve_debate_runtime_config(_args(), config_yaml, state_yaml)
+
+    assert runtime_config.models == ("codex", "claude", "off", "off", "off")
 
 
 def test_debate_state_round_trip(tmp_path):
     state_path = tmp_path / "state.yaml"
 
-    save_debate_state(("deepseek-pro", "codex"), state_path)
+    save_debate_state(("deepseek-pro", "codex", "off"), state_path)
 
-    assert load_debate_state(state_path) == {"last_models": ["deepseek-pro", "codex"]}
+    assert load_debate_state(state_path) == {
+        "last_models": ["deepseek-pro", "codex", "off", "off", "off"]
+    }
 
 
-def test_models_config_path_defaults_to_models_yaml():
+def test_models_config_path_defaults_to_agent_models_yaml():
     assert resolve_models_config_path(_args(), {}) == DEFAULT_MODELS_CONFIG_PATH
 
 
@@ -216,7 +253,7 @@ def test_models_config_path_cli_override_wins():
     assert path == Path("override/models.yaml")
 
 
-def test_runner_uses_launch_template_and_prompt_file(tmp_path):
+def test_runner_uses_wrapper_script_when_no_prompt_file_launch(tmp_path):
     tmux = FakeTmuxClient()
     runner = ModelRunner(_worker(), tmux_client=tmux, session_root=tmp_path)
 
@@ -227,7 +264,52 @@ def test_runner_uses_launch_template_and_prompt_file(tmp_path):
     assert tmux.sent_commands
     command = tmux.sent_commands[-1]
     assert "{{PROMPT}}" not in command
-    assert 'codex exec "$(cat ' in command
+    assert "$(cat " not in command
+    wrapper_path = process.prompt_file.with_name(process.prompt_file.stem + "_wrapper.zsh")
+    assert wrapper_path.exists()
+    assert str(wrapper_path) in command
+
+
+def test_runner_wrapper_script_reads_prompt_file_and_invokes_launch_safely(tmp_path):
+    tmux = FakeTmuxClient()
+    runner = ModelRunner(_worker(), tmux_client=tmux, session_root=tmp_path)
+
+    process = runner.run(
+        'Prompt with "quotes" and $vars', session_id="abc123", agent_id="A", turn_index=1
+    )
+
+    wrapper_path = process.prompt_file.with_name(process.prompt_file.stem + "_wrapper.zsh")
+    wrapper = wrapper_path.read_text(encoding="utf-8")
+
+    assert "#!/usr/bin/env zsh" in wrapper
+    assert f"__debate_prompt=$(< {shlex.quote(str(process.prompt_file))})" in wrapper
+    assert 'codex exec "$__debate_prompt"' in wrapper
+    assert process.prompt_file.read_text(encoding="utf-8") == 'Prompt with "quotes" and $vars'
+
+
+def test_runner_can_pass_prompt_file_path_without_inlining_prompt(tmp_path):
+    tmux = FakeTmuxClient()
+    runner = ModelRunner(
+        {
+            "name": "claude",
+            "launch": 'printf "%s" "{{PROMPT}}" | claude --bare --add-dir . --print',
+            "prompt_file_launch": "claude --bare --add-dir . --print < {{PROMPT_FILE}}",
+            "description": "Claude",
+        },
+        tmux_client=tmux,
+        session_root=tmp_path,
+    )
+
+    process = runner.run(
+        "Multiline\nprompt with spaces", session_id="abc123", agent_id="B", turn_index=2
+    )
+
+    command = tmux.sent_commands[-1]
+    assert process.prompt_file.read_text() == "Multiline\nprompt with spaces"
+    assert "{{PROMPT_FILE}}" not in command
+    assert "{{PROMPT}}" not in command
+    assert "$(cat " not in command
+    assert "claude --bare --add-dir . --print < " in command
     assert str(process.prompt_file) in command
 
 
@@ -254,13 +336,13 @@ def test_orchestrator_waits_for_initial_prompt_and_builds_context():
 
     assert not orchestrator.has_initial_prompt
 
-    orchestrator.set_initial_prompt("Read the repository notes and discuss feature X")
+    orchestrator.set_initial_prompt("Study 3A and discuss feature X")
     orchestrator.finalize_turn("A", "Proposal from A")
     orchestrator.add_user_intervention("Check performance impact")
 
     prompt = orchestrator.build_agent_prompt("B")
 
-    assert "Original task: Read the repository notes and discuss feature X" in prompt
+    assert "Original task: Study 3A and discuss feature X" in prompt
     assert "[Agent A]:" in prompt
     assert "Proposal from A" in prompt
     assert "[USER]:" in prompt
@@ -276,7 +358,9 @@ def test_orchestrator_prompt_is_minimal_and_requires_final_markers():
 
     assert "<DEBATE_FINAL>" in prompt
     assert "</DEBATE_FINAL>" in prompt
-    assert "Use these exact tools" not in prompt
+    assert "3A" not in prompt
+    assert "graphify" not in prompt
+    assert "Linear" not in prompt
 
 
 def test_second_agent_prompt_includes_initial_prompt_and_first_final_answer():
@@ -291,6 +375,56 @@ def test_second_agent_prompt_includes_initial_prompt_and_first_final_answer():
 
     assert "Original task: Read a tiny file and comment" in prompt
     assert "First final answer" in prompt
+
+
+def test_three_agent_orchestrator_cycles_context_and_consensus_gate():
+    orchestrator = DebateOrchestrator(
+        agent_model_configs=(
+            _worker("deepseek-pro"),
+            _worker("codex"),
+            _worker("glm"),
+        ),
+        initial_prompt="Task",
+    )
+
+    assert orchestrator.active_agent_ids == ["A", "B", "C"]
+    assert orchestrator.next_agent_id("A") == "B"
+    assert orchestrator.next_agent_id("B") == "C"
+    assert orchestrator.next_agent_id("C") == "A"
+
+    prompt = orchestrator.build_agent_prompt("C")
+    assert "three-agent debate" in prompt
+    assert "Agent A, Agent B, Agent C" in prompt
+
+    orchestrator.finalize_turn("A", "A answer")
+    orchestrator.finalize_turn("B", "B answer")
+    third = orchestrator.finalize_turn("C", "CONSENSUS: too early")
+    assert orchestrator.check_consensus(third)
+    assert not orchestrator.can_accept_consensus(third)
+    assert orchestrator.should_continue()
+
+    fourth = orchestrator.finalize_turn("A", "CONSENSUS: after all agents spoke")
+    assert orchestrator.can_accept_consensus(fourth)
+    assert not orchestrator.should_continue()
+
+
+def test_three_agent_max_turns_counts_full_rounds():
+    orchestrator = DebateOrchestrator(
+        agent_model_configs=(
+            _worker("deepseek-pro"),
+            _worker("codex"),
+            _worker("glm"),
+        ),
+        initial_prompt="Task",
+        max_turns=1,
+    )
+
+    orchestrator.finalize_turn("A", "A response")
+    assert orchestrator.should_continue()
+    orchestrator.finalize_turn("B", "B response")
+    assert orchestrator.should_continue()
+    orchestrator.finalize_turn("C", "C response")
+    assert not orchestrator.should_continue()
 
 
 def test_orchestrator_stores_only_final_answer_and_saves_raw_output(tmp_path):
@@ -331,6 +465,77 @@ def test_save_transcript_includes_initial_prompt_and_full_history(tmp_path):
     assert "User clarification" in transcript
 
 
+def test_cleanup_removes_unsaved_debate_session_dir(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    orchestrator = DebateOrchestrator(
+        model_a_config=_worker("deepseek-pro"),
+        model_b_config=_worker("codex"),
+        initial_prompt="Task",
+    )
+    marker = orchestrator.session_dir / "raw" / "turn.txt"
+    marker.parent.mkdir(parents=True)
+    marker.write_text("raw output", encoding="utf-8")
+
+    session_dir = orchestrator.session_dir
+    orchestrator.cleanup()
+
+    assert not session_dir.exists()
+
+
+def test_cleanup_preserves_saved_debate_session_dir(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    orchestrator = DebateOrchestrator(
+        model_a_config=_worker("deepseek-pro"),
+        model_b_config=_worker("codex"),
+        initial_prompt="Task",
+    )
+    session_dir = orchestrator.session_dir
+
+    transcript_path = orchestrator.save_transcript()
+    orchestrator.cleanup()
+
+    assert session_dir.exists()
+    assert transcript_path.exists()
+
+
+def test_reset_removes_previous_unsaved_debate_session_dir(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    orchestrator = DebateOrchestrator(
+        model_a_config=_worker("deepseek-pro"),
+        model_b_config=_worker("codex"),
+        initial_prompt="Task",
+    )
+    old_session_dir = orchestrator.session_dir
+    (old_session_dir / "turn.txt").write_text("prompt", encoding="utf-8")
+
+    orchestrator.reset(initial_prompt="Next task")
+
+    assert not old_session_dir.exists()
+    assert orchestrator.session_dir.exists()
+    assert orchestrator.session_dir != old_session_dir
+
+
+def test_prune_unsaved_debate_tmp_deletes_only_unsaved_inactive_dirs(tmp_path):
+    tmp_root = tmp_path / ".debate" / "tmp"
+    unsaved = tmp_root / "debate-unsaved"
+    saved = tmp_root / "debate-saved"
+    active = tmp_root / "debate-active"
+    other = tmp_root / "1a-run"
+    for path in (unsaved, saved, active, other):
+        path.mkdir(parents=True)
+    (saved / "transcript.md").write_text("saved", encoding="utf-8")
+
+    removed = prune_unsaved_debate_tmp(
+        tmp_root, is_session_active=lambda session_name: session_name == "debate-active"
+    )
+
+    assert removed == [unsaved]
+    assert not unsaved.exists()
+    assert saved.exists()
+    assert active.exists()
+    assert other.exists()
+
+
 def test_orchestrator_final_answer_fallback_uses_tail_without_marker():
     orchestrator = DebateOrchestrator(
         model_a_config=_worker("codex"), model_b_config=_worker("deepseek"), initial_prompt="Task"
@@ -355,6 +560,20 @@ def test_orchestrator_max_turns_counts_full_rounds():
     assert not orchestrator.should_continue()
 
 
+def test_orchestrator_prompt_requires_structured_consensus_rationale():
+    orchestrator = DebateOrchestrator(
+        model_a_config=_worker("codex"), model_b_config=_worker("deepseek"), initial_prompt="Task"
+    )
+
+    prompt = orchestrator.build_agent_prompt("A", is_first_turn=True)
+
+    assert "CONSENSUS:" in prompt
+    assert "1. Decision:" in prompt
+    assert "2. Key arguments:" in prompt
+    assert "3. Residual risks" in prompt
+    assert "4. Next step:" in prompt
+
+
 def test_consensus_requires_response_prefix():
     orchestrator = DebateOrchestrator(
         model_a_config=_worker("codex"), model_b_config=_worker("deepseek"), initial_prompt="Task"
@@ -363,6 +582,33 @@ def test_consensus_requires_response_prefix():
     assert orchestrator.check_consensus("CONSENSUS: ship it")
     assert orchestrator.check_consensus("\n  CONSENSUS: ship it")
     assert not orchestrator.check_consensus("The prompt mentioned CONSENSUS: but no agreement")
+
+
+def test_consensus_is_not_accepted_before_second_round():
+    orchestrator = DebateOrchestrator(
+        model_a_config=_worker("codex"), model_b_config=_worker("deepseek"), initial_prompt="Task"
+    )
+
+    prompt = orchestrator.build_agent_prompt("A", is_first_turn=True)
+
+    assert "Do not use CONSENSUS on your first turn" in prompt
+
+    first_response = orchestrator.finalize_turn("A", "CONSENSUS: premature")
+    assert orchestrator.check_consensus(first_response)
+    assert not orchestrator.can_accept_consensus(first_response)
+    assert orchestrator.should_continue()
+
+    second_response = orchestrator.finalize_turn("B", "CONSENSUS: still too early")
+    assert orchestrator.check_consensus(second_response)
+    assert not orchestrator.can_accept_consensus(second_response)
+    assert orchestrator.should_continue()
+
+    third_response = orchestrator.finalize_turn("A", "CONSENSUS: now this is grounded")
+    assert orchestrator.can_accept_consensus(third_response)
+    assert not orchestrator.should_continue()
+
+    orchestrator.add_user_intervention("Continue and compare another trade-off")
+    assert orchestrator.should_continue()
 
 
 @pytest.mark.asyncio
@@ -415,6 +661,138 @@ def test_tui_status_label_uses_worker_names():
     assert "Agent B: codex" in app.status_text("Enter initial prompt")
 
 
+def test_turn_display_uses_textual_border_title_not_manual_box():
+    turn = TurnDisplay("A", 2)
+
+    assert turn.border_title == "Turn 2 - Agent A"
+    assert str(turn.render()) == "Running..."
+    assert "┌" not in str(turn.render())
+    assert "└" not in str(turn.render())
+    assert turn.has_class("thinking")
+
+    turn.update_content("Final answer", finished=True)
+
+    assert str(turn.render()) == "Final answer"
+    assert not turn.has_class("thinking")
+    assert turn.has_class("finished")
+
+
+@pytest.mark.asyncio
+async def test_tui_shows_initial_prompt_before_first_turn(monkeypatch):
+    app = DebateApp(
+        DebateOrchestrator(
+            model_a_config=_worker("deepseek-pro"),
+            model_b_config=_worker("codex"),
+        )
+    )
+
+    async def fake_run_debate():
+        return None
+
+    monkeypatch.setattr(app, "run_debate", fake_run_debate)
+
+    async with app.run_test():
+        await app.handle_user_message("Read the tiny file and comment")
+        debate_view = app.query_one("#debate-view", DebateView)
+        prompt_display = app.query_one("#initial-prompt")
+        turn_display = debate_view.add_turn("A", 1)
+
+        children = list(debate_view.children)
+
+    assert prompt_display.border_title == "Initial prompt"
+    assert str(prompt_display.render()) == "Read the tiny file and comment"
+    assert children.index(prompt_display) < children.index(turn_display)
+
+
+def test_tui_css_defines_active_turn_pulse_and_closing_blink():
+    css = DebateApp.CSS
+
+    assert "TurnDisplay.thinking.pulse-on" in css
+    assert "#closing-dots.blink-off" in css
+
+
+def test_tui_status_strip_has_compact_top_gap():
+    css = DebateApp.CSS
+
+    assert "#status" in css
+    assert "height: 2;" in css
+    assert "padding: 1 0 0 0;" in css
+
+
+def test_initial_prompt_frame_uses_plain_text_border():
+    css = DebateApp.CSS
+
+    assert "PromptDisplay {" in css
+    assert "border: round white;" in css
+    assert "TurnDisplay {" in css
+    assert "border: round $accent;" in css
+
+
+@pytest.mark.asyncio
+async def test_tui_input_suggests_slash_commands():
+    app = DebateApp(
+        DebateOrchestrator(
+            model_a_config=_worker("deepseek-pro"),
+            model_b_config=_worker("codex"),
+        )
+    )
+
+    async with app.run_test():
+        input_widget = app.query_one("#user-input", Input)
+
+        assert input_widget.suggester is not None
+        assert await input_widget.suggester.get_suggestion("/") == "/new"
+        assert await input_widget.suggester.get_suggestion("/mo") == "/models"
+        assert await input_widget.suggester.get_suggestion("/sa") == "/save"
+
+
+@pytest.mark.asyncio
+async def test_tui_closing_overlay_is_centered_and_blinks():
+    app = DebateApp(
+        DebateOrchestrator(
+            model_a_config=_worker("deepseek-pro"),
+            model_b_config=_worker("codex"),
+        )
+    )
+
+    async with app.run_test():
+        await app.show_closing_overlay()
+        overlay = app.query_one("#closing-overlay", ClosingOverlay)
+        label = app.query_one("#closing-label")
+        dots = app.query_one("#closing-dots")
+
+        assert overlay.border_title is None
+        assert str(label.render()) == "App closing, wait"
+        assert str(dots.render()) == "..."
+
+        app._pulse_on = True
+        app._tick_pulse()
+
+        assert dots.has_class("blink-off")
+        assert str(dots.render()) == "   "
+
+
+@pytest.mark.asyncio
+async def test_tui_quit_shows_closing_overlay_before_cleanup(monkeypatch):
+    orchestrator = DebateOrchestrator(
+        model_a_config=_worker("deepseek-pro"),
+        model_b_config=_worker("codex"),
+    )
+    app = DebateApp(orchestrator)
+    events = []
+
+    async def fake_show_closing_overlay():
+        events.append("overlay")
+
+    monkeypatch.setattr(app, "show_closing_overlay", fake_show_closing_overlay)
+    monkeypatch.setattr(orchestrator, "cleanup", lambda: events.append("cleanup"))
+
+    async with app.run_test():
+        await app.action_quit()
+
+    assert events[:2] == ["overlay", "cleanup"]
+
+
 @pytest.mark.asyncio
 async def test_tui_models_menu_selects_two_numbered_models(tmp_path):
     app = DebateApp(
@@ -433,7 +811,60 @@ async def test_tui_models_menu_selects_two_numbered_models(tmp_path):
 
     assert app.orchestrator.model_a.model == "glm"
     assert app.orchestrator.model_b.model == "codex"
-    assert load_debate_state(tmp_path / "state.yaml") == {"last_models": ["glm", "codex"]}
+    assert app.orchestrator.model_c is None
+    assert load_debate_state(tmp_path / "state.yaml") == {
+        "last_models": ["glm", "codex", "off", "off", "off"]
+    }
+
+
+@pytest.mark.asyncio
+async def test_tui_models_menu_selects_three_agents_and_off(tmp_path):
+    app = DebateApp(
+        DebateOrchestrator(
+            model_a_config=_worker("deepseek-pro"),
+            model_b_config=_worker("codex"),
+        ),
+        models_yaml=_models_yaml(),
+        state_path=tmp_path / "state.yaml",
+    )
+
+    async with app.run_test():
+        await app.handle_user_message("/models")
+        menu_text = str(app.query(".model-menu").last().render())
+        assert "Agent A" in menu_text
+        assert "Agent B" in menu_text
+        assert "Agent C" in menu_text
+        assert "off" in menu_text
+        await app.handle_user_message("3 1 5")
+
+    assert app.orchestrator.active_agent_ids == ["A", "B"]
+    assert app.orchestrator.model_a.model == "glm"
+    assert app.orchestrator.model_b.model == "codex"
+    assert app.orchestrator.model_c is None
+    assert load_debate_state(tmp_path / "state.yaml") == {
+        "last_models": ["glm", "codex", "off", "off", "off"]
+    }
+
+
+@pytest.mark.asyncio
+async def test_tui_models_menu_rejects_single_active_agent(tmp_path):
+    app = DebateApp(
+        DebateOrchestrator(
+            model_a_config=_worker("deepseek-pro"),
+            model_b_config=_worker("codex"),
+        ),
+        models_yaml=_models_yaml(),
+        state_path=tmp_path / "state.yaml",
+    )
+    notifications = []
+    app.notify = lambda message: notifications.append(message)
+
+    async with app.run_test():
+        await app.handle_user_message("/models")
+        await app.handle_user_message("1 5 5")
+
+    assert app.model_selection_active
+    assert any("at least two active" in message for message in notifications)
 
 
 @pytest.mark.asyncio
@@ -462,7 +893,7 @@ async def test_next_prompt_after_finished_starts_new_debate(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_tui_cleans_up_agent_sessions_after_consensus(monkeypatch):
+async def test_tui_awaits_choice_and_keeps_sessions_after_consensus(monkeypatch):
     orchestrator = DebateOrchestrator(
         model_a_config=_worker("deepseek-pro"),
         model_b_config=_worker("codex"),
@@ -477,11 +908,225 @@ async def test_tui_cleans_up_agent_sessions_after_consensus(monkeypatch):
         "capture_agent_output",
         lambda agent_id: "<DEBATE_FINAL>CONSENSUS: done</DEBATE_FINAL>",
     )
+    monkeypatch.setattr(orchestrator, "can_accept_consensus", lambda response: True)
     monkeypatch.setattr(orchestrator, "cleanup", lambda: cleanup_calls.append(True))
 
     app = DebateApp(orchestrator)
 
     async with app.run_test():
         await app.run_debate()
+        input_widget = app.query_one("#user-input", Input)
+
+    assert cleanup_calls == []
+    assert app.awaiting_consensus_action
+    assert app.debate_finished
+    assert app.next_agent == "B"
+    assert input_widget.placeholder == "Consensus: Enter/new | save | continue"
+
+
+@pytest.mark.asyncio
+async def test_consensus_enter_defaults_to_new_and_closes_sessions(monkeypatch):
+    orchestrator = DebateOrchestrator(
+        model_a_config=_worker("deepseek-pro"),
+        model_b_config=_worker("codex"),
+        initial_prompt="Task",
+    )
+    cleanup_calls = []
+
+    monkeypatch.setattr(orchestrator, "cleanup", lambda: cleanup_calls.append(True))
+
+    app = DebateApp(orchestrator)
+    app.awaiting_consensus_action = True
+
+    async with app.run_test():
+        event = Input.Submitted(app.query_one("#user-input", Input), "")
+        await app.on_input_submitted(event)
 
     assert cleanup_calls == [True]
+    assert not app.awaiting_consensus_action
+    assert not orchestrator.has_initial_prompt
+
+
+@pytest.mark.asyncio
+async def test_consensus_save_closes_sessions_and_keeps_transcript_visible(monkeypatch, tmp_path):
+    orchestrator = DebateOrchestrator(
+        model_a_config=_worker("deepseek-pro"),
+        model_b_config=_worker("codex"),
+        initial_prompt="Task",
+    )
+    orchestrator.session_dir = tmp_path
+    cleanup_calls = []
+
+    monkeypatch.setattr(orchestrator, "cleanup", lambda: cleanup_calls.append(True))
+
+    app = DebateApp(orchestrator)
+    app.awaiting_consensus_action = True
+
+    async with app.run_test():
+        await app.handle_user_message("save")
+
+    assert cleanup_calls == [True]
+    assert not app.awaiting_consensus_action
+    assert app.debate_finished
+    assert (tmp_path / "transcript.md").exists()
+
+
+@pytest.mark.asyncio
+async def test_consensus_continue_keeps_sessions_and_resumes_debate(monkeypatch):
+    orchestrator = DebateOrchestrator(
+        model_a_config=_worker("deepseek-pro"),
+        model_b_config=_worker("codex"),
+        initial_prompt="Task",
+    )
+    cleanup_calls = []
+    resumed = []
+
+    monkeypatch.setattr(orchestrator, "cleanup", lambda: cleanup_calls.append(True))
+
+    app = DebateApp(orchestrator)
+    app.awaiting_consensus_action = True
+    app.debate_finished = True
+    app.next_agent = "B"
+    app.next_turn_number = 2
+
+    async def fake_run_debate():
+        resumed.append(app.next_agent)
+
+    monkeypatch.setattr(app, "run_debate", fake_run_debate)
+
+    async with app.run_test():
+        await app.handle_user_message("continue")
+        await app.debate_task
+        user_lines = [str(child.render()) for child in app.query_one("#debate-view").children]
+
+    assert cleanup_calls == []
+    assert resumed == ["A"]
+    assert app.next_turn_number == 3
+    assert not app.awaiting_consensus_action
+    assert not app.debate_finished
+    assert orchestrator.conversation_history[-1]["agent"] == "USER"
+    assert any("[USER]: Continue after consensus." in line for line in user_lines)
+
+
+@pytest.mark.asyncio
+async def test_tui_rings_terminal_bell_after_consensus(monkeypatch):
+    orchestrator = DebateOrchestrator(
+        model_a_config=_worker("deepseek-pro"),
+        model_b_config=_worker("codex"),
+        initial_prompt="Task",
+    )
+    consensus_notifications = []
+
+    monkeypatch.setattr(orchestrator, "start_turn", lambda *args, **kwargs: "session")
+    monkeypatch.setattr(orchestrator, "is_agent_running", lambda agent_id: False)
+    monkeypatch.setattr(
+        orchestrator,
+        "capture_agent_output",
+        lambda agent_id: "<DEBATE_FINAL>CONSENSUS: done</DEBATE_FINAL>",
+    )
+    monkeypatch.setattr(orchestrator, "cleanup", lambda: None)
+
+    app = DebateApp(orchestrator)
+    monkeypatch.setattr(app, "notify_consensus", lambda: consensus_notifications.append("bell"))
+
+    async with app.run_test():
+        await app.run_debate()
+
+    assert consensus_notifications == ["bell"]
+
+
+def test_notify_consensus_uses_terminal_bell(monkeypatch):
+    app = DebateApp(
+        DebateOrchestrator(
+            model_a_config=_worker("deepseek-pro"),
+            model_b_config=_worker("codex"),
+        )
+    )
+    bells = []
+
+    monkeypatch.setattr(app, "bell", lambda: bells.append("bel"))
+
+    app.notify_consensus()
+
+    assert bells == ["bel"]
+
+
+class TestMarkdownToRich:
+    def test_bold_conversion(self):
+        result = markdown_to_rich("**fat**")
+        assert "[bold]fat[/bold]" in result
+
+    def test_italic_conversion(self):
+        result = markdown_to_rich("*italic*")
+        assert "[italic]italic[/italic]" in result
+
+    def test_bold_italic_conversion(self):
+        result = markdown_to_rich("***fat italic***")
+        assert "[bold italic]fat italic[/bold italic]" in result
+
+    def test_code_conversion(self):
+        result = markdown_to_rich("`code`")
+        assert "[bold yellow]code[/bold yellow]" in result
+
+    def test_heading_conversion(self):
+        result = markdown_to_rich("## Heading")
+        assert "[bold underline]Heading[/bold underline]" in result
+
+    def test_ansi_escape_stripped(self):
+        result = markdown_to_rich(r"\033[31mRed text\033[0m")
+        assert "[31m" not in result
+        assert "\033[" not in result
+
+    def test_ansi_with_semicolon_stripped(self):
+        result = markdown_to_rich(r"\033[1;32mBold green\033[0m")
+        assert "[1;32m" not in result
+        assert "[0m" not in result
+
+    def test_ansi_and_markdown_together(self):
+        result = markdown_to_rich(r"\033[31mRed\033[0m and **bold**")
+        assert "Red" in result
+        assert "bold" in result
+        assert "[bold]bold[/bold]" in result
+
+    def test_bracket_escaped(self):
+        result = markdown_to_rich("[task list]")
+        assert "[[task list]]" in result
+
+    def test_markdown_link_brackets_preserved(self):
+        result = markdown_to_rich("[opencode](url)")
+        assert "[[opencode]](url)" in result
+
+    def test_footnote_brackets_preserved(self):
+        result = markdown_to_rich("text[^1]")
+        assert "[[^1]]" in result
+
+    def test_mixed_brackets_and_markdown(self):
+        result = markdown_to_rich("**fat** [link](url) *italic*")
+        assert "[bold]fat[/bold]" in result
+        assert "[[link]](url)" in result
+        assert "[italic]italic[/italic]" in result
+
+    def test_whitespace_passthrough(self):
+        result = markdown_to_rich("   ")
+        assert result == "   "
+
+    def test_empty_passthrough(self):
+        result = markdown_to_rich("")
+        assert result == ""
+
+    def test_plain_text_passthrough(self):
+        result = markdown_to_rich("normal text")
+        assert "[bold]" not in result
+        assert result == "normal text"
+
+    def test_code_with_brackets_inside(self):
+        result = markdown_to_rich("`[code]`")
+        assert "[bold yellow][[code]][/bold yellow]" in result
+
+    def test_from_markup_compatibility(self):
+        from textual.content import Content
+
+        text = r"\033[31mRed\033[0m **bold** *italic* `code` [link](url)"
+        rich = markdown_to_rich(text)
+        c = Content.from_markup(rich)
+        assert len(c.spans) >= 3
