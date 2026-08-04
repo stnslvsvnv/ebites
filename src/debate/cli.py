@@ -169,6 +169,18 @@ def parse_args():
         help="Per-turn timeout in seconds (headless mode, default: 300)",
     )
 
+    parser.add_argument(
+        "--reasoning",
+        type=str,
+        choices=["max", "medium"],
+        default="max",
+        help=(
+            "Reasoning effort for all agents: 'max' (default) or 'medium' "
+            "(quick debates). Per-worker: opencode --variant, claude-fable --effort, "
+            "codex model_reasoning_effort."
+        ),
+    )
+
     return parser.parse_args()
 
 
@@ -200,6 +212,10 @@ def main():
         display_mode=runtime_config.display_mode,
         save_raw_output=runtime_config.save_raw_output,
     )
+
+    # Apply reasoning level (session-memory; CLI default is "max")
+    if getattr(args, "reasoning", "max") != "max":
+        orchestrator.set_reasoning_level(args.reasoning)
 
     if args.headless:
         from .headless import EXIT_AGENT_FAILURE, load_prompt_file, run_headless

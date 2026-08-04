@@ -78,6 +78,7 @@ class DebateOrchestrator:
         model_c_config: dict[str, Any] | None = None,
     ):
         self.agent_runners: dict[str, ModelRunner] = {}
+        self.reasoning_level: str = "max"
         self._set_agent_configs(
             self._normalize_agent_configs(
                 model_a_config,
@@ -165,6 +166,26 @@ class DebateOrchestrator:
         if self.conversation_history or self.agent_turn_count:
             raise ValueError("Cannot change initial prompt after debate has started")
         self.initial_prompt = cleaned
+
+    def set_reasoning_level(self, level: str) -> tuple[bool, list[str]]:
+        """Set reasoning level for all agents. Returns (ok, unsupported_worker_names).
+
+        Level is session-memory: resets to 'max' on new debate. Workers that do
+        not support reasoning control (e.g. claude/Opus via --bare) keep 'max'
+        behavior and are returned in the unsupported list for the caller to warn.
+        """
+
+        if level not in {"max", "medium"}:
+            raise ValueError(f"reasoning level must be 'max' or 'medium', got: {level!r}")
+        self.reasoning_level = level
+        unsupported: list[str] = []
+        for agent_id, runner in self.agent_runners.items():
+            if runner.supports_reasoning():
+                runner.set_reasoning_level(level)
+            else:
+                if level != "max":
+                    unsupported.append(runner.name)
+        return (len(unsupported) == 0, unsupported)
 
     def set_models(
         self,
@@ -482,7 +503,7 @@ Date: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
         configs: Sequence[dict[str, Any] | None],
     ) -> None:
         self.agent_runners = {
-            agent_id: ModelRunner(config)
+            agent_id: ModelRunner(config, reasoning_level=self.reasoning_level)
             for agent_id, config in zip(ALL_AGENT_IDS, configs)
             if config is not None
         }

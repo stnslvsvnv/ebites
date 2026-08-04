@@ -93,6 +93,7 @@ class ModelRunner:
         tmux_client: TmuxClientProtocol | None = None,
         session_root: Path | str = Path(".debate/tmp"),
         cwd: Path | str | None = None,
+        reasoning_level: str = "max",
     ):
         if "launch" not in model_config:
             raise ValueError("Model config must contain a 'launch' template")
@@ -104,6 +105,52 @@ class ModelRunner:
         self.tmux = tmux_client or TmuxClient()
         self.session_root = Path(session_root)
         self.cwd = Path.cwd() if cwd is None else Path(cwd)
+        self.reasoning_level = reasoning_level
+
+    def supports_reasoning(self) -> bool:
+        """True when this worker's launch template can be retuned for reasoning level."""
+
+        launch = self.launch_template
+        return any(
+            marker in launch
+            for marker in ("--variant ", "--effort ", 'model_reasoning_effort="')
+        )
+
+    def set_reasoning_level(self, level: str) -> None:
+        if level not in {"max", "medium"}:
+            raise ValueError(f"reasoning level must be 'max' or 'medium', got: {level!r}")
+        self.reasoning_level = level
+        if not self.supports_reasoning() and level != "max":
+            return
+
+    @staticmethod
+    def _apply_reasoning(launch_str: str, level: str) -> str:
+        """Substitute reasoning level markers in a launch template string.
+
+        Markers handled (per worker family):
+        - opencode `--variant <x>`     -> `--variant <level>` (max|medium)
+        - claude `--effort <x>`        -> `--effort <level>` (max|medium)
+        - codex  `model_reasoning_effort="<x>"` -> `model_reasoning_effort="<codex_level>"`
+          (max -> high, medium -> medium)
+        """
+
+        if not launch_str:
+            return launch_str
+
+        # opencode --variant <x>
+        launch_str = re.sub(r"--variant\s+\S+", f"--variant {level}", launch_str)
+
+        # claude --effort <x>
+        launch_str = re.sub(r"--effort\s+\S+", f"--effort {level}", launch_str)
+
+        # codex model_reasoning_effort="..."
+        codex_effort = "high" if level == "max" else level
+        launch_str = re.sub(
+            r'model_reasoning_effort="\w+"',
+            f'model_reasoning_effort="{codex_effort}"',
+            launch_str,
+        )
+        return launch_str
 
     @property
     def model(self) -> str:
@@ -188,7 +235,8 @@ class ModelRunner:
         to the worker's launch template as a single safely-quoted argument.
         """
         wrapper_file = prompt_file.with_name(prompt_file.stem + "_wrapper.zsh")
-        launch_command = self.launch_template.replace("{{PROMPT}}", "$__debate_prompt")
+        launch_template = self._apply_reasoning(self.launch_template, self.reasoning_level)
+        launch_command = launch_template.replace("{{PROMPT}}", "$__debate_prompt")
         script = (
             "#!/usr/bin/env zsh\n"
             f"__debate_prompt=$(< {shlex.quote(str(prompt_file))})\n"
@@ -201,9 +249,10 @@ class ModelRunner:
     def _build_command(self, prompt_file: Path, start_marker: str, sentinel: str) -> str:
         if self.prompt_file_launch_template:
             prompt_file_arg = shlex.quote(str(prompt_file))
-            launch_command = self.prompt_file_launch_template.replace(
-                "{{PROMPT_FILE}}", prompt_file_arg
+            launch_template = self._apply_reasoning(
+                self.prompt_file_launch_template, self.reasoning_level
             )
+            launch_command = launch_template.replace("{{PROMPT_FILE}}", prompt_file_arg)
         else:
             wrapper_file = self._write_wrapper_script(prompt_file)
             launch_command = shlex.quote(str(wrapper_file))

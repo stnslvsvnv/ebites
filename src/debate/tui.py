@@ -18,7 +18,7 @@ from .config import DEFAULT_DEBATE_STATE_PATH, OFF_MODEL_NAME, save_debate_state
 from .orchestrator import AGENT_IDS, DebateOrchestrator
 
 CONSENSUS_TEXT = "CONSENSUS REACHED"
-COMMAND_SUGGESTIONS = ("/new", "/models", "/save")
+COMMAND_SUGGESTIONS = ("/new", "/models", "/save", "/reasoning max", "/reasoning medium")
 CONSENSUS_ACTION_SUGGESTIONS = ("new", "save", "continue")
 CONSENSUS_CONTINUE_MESSAGE = (
     "Continue after the previous consensus. Re-open the debate, explore remaining "
@@ -257,6 +257,7 @@ class DebateApp(App):
         self.debate_finished = False
         self.model_selection_active = False
         self.awaiting_consensus_action = False
+        self._reasoning_warn_shown = False
         self.next_agent = self.orchestrator.first_agent_id
         self.next_turn_number = 1
         self.next_turn_is_first = True
@@ -274,6 +275,7 @@ class DebateApp(App):
         for agent_id in self.orchestrator.active_agent_ids:
             runner = self.orchestrator.agent_runners[agent_id]
             parts.append(f"Agent {agent_id}: {runner.model} ({runner.description})")
+        parts.append(f"reasoning: {self.orchestrator.reasoning_level}")
         parts.append(state)
         return " | ".join(parts)
 
@@ -299,7 +301,7 @@ class DebateApp(App):
             id="input-container",
         )
         yield Static(
-            "Commands: /new | /models | /save | ESC - pause | Ctrl+C - quit",
+            "Commands: /new | /models | /save | /reasoning max|medium | ESC - pause | Ctrl+C - quit",
             id="help",
         )
         yield Footer()
@@ -372,6 +374,9 @@ class DebateApp(App):
             return
         if message == "/models":
             await self.action_models()
+            return
+        if message.startswith("/reasoning"):
+            await self.action_reasoning(message)
             return
         if self.model_selection_active:
             await self.apply_model_selection(message)
@@ -506,6 +511,32 @@ class DebateApp(App):
         self.query_one(
             "#user-input", Input
         ).placeholder = "Choose Agent A, B, C, D, E model numbers, e.g. 1 2 5"
+
+    async def action_reasoning(self, message: str) -> None:
+        """Switch reasoning level for all agents (session-memory).
+
+        `/reasoning max|medium`. 'max' is default (high effort); 'medium' spawns
+        quick debates. Workers that do not support reasoning control are
+        warned once per session via notify and keep their default launch.
+        """
+
+        parts = message.split()
+        if len(parts) != 2 or parts[1] not in {"max", "medium"}:
+            self.notify("Usage: /reasoning max | /reasoning medium")
+            return
+        level = parts[1]
+        ok, unsupported = self.orchestrator.set_reasoning_level(level)
+        if not ok and level != "max" and not self._reasoning_warn_shown:
+            for name in unsupported:
+                self.notify(
+                    f"{name}: reasoning not supported, using default",
+                    timeout=4,
+                )
+            self._reasoning_warn_shown = True
+        self.query_one("#status", Static).update(
+            self.status_text(f"reasoning: {level}")
+        )
+        self.notify(f"Reasoning set to {level}")
 
     async def apply_model_selection(self, message: str) -> None:
         parts = message.replace(",", " ").split()

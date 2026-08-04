@@ -90,6 +90,7 @@ debate --models codex,deepseek-pro
 debate --models deepseek-pro,codex,glm,qwen,claude
 debate --preset council
 debate --max-turns 5
+debate --reasoning medium
 debate --models-config /path/to/debate.yaml
 ```
 
@@ -97,11 +98,23 @@ Inside the TUI:
 
 - `/new` starts a fresh debate and closes current agent sessions.
 - `/models` opens the model picker (slots A-E).
+- `/reasoning max|medium` switches reasoning effort for all agents (session-memory). `max` (default) = high effort; `medium` = quick debates. Workers without reasoning control (e.g. `claude`/Opus) keep default and warn once.
 - `/save` writes `.debate/tmp/debate-{session_id}/transcript.md`.
 - `Esc` pauses or resumes.
 - `Ctrl+C` quits and cleans up agent sessions.
 
 Typing a normal prompt after consensus or `max_turns` starts a new debate.
+
+### Reasoning levels
+
+Per-worker substitution (launch-time, no runtime switch):
+
+| Worker family | `max` | `medium` |
+|---------------|------|----------|
+| opencode (`deepseek-*`, `glm`, `grok`, `kimi-k3`, `qwen`) | `--variant max` | `--variant medium` |
+| `claude-fable` | `--effort max` | `--effort medium` |
+| `codex` | `model_reasoning_effort="high"` | `model_reasoning_effort="medium"` |
+| `claude` (Opus) | not supported (warn) | not supported (warn) |
 
 ## Run (headless)
 
@@ -112,10 +125,13 @@ TUI and write the transcript to a fixed path.
 debate --headless \
   --models claude-fable,deepseek-pro,codex \
   --max-turns 8 \
+  --reasoning medium \
   --prompt-file debate/prompt.md \
   --transcript-out debate/transcript.md \
   --turn-timeout 300
 ```
+
+`--reasoning medium` runs quick debates (lower effort per agent).
 
 Exit codes:
 
