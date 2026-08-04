@@ -535,11 +535,19 @@ class DebateApp(App):
             return
         self.model_selection_active = True
         debate_view = self.query_one("#debate-view", DebateView)
-        debate_view.mount(Static(self.model_menu_text(), classes="model-menu"))
+        menu = Static(self.model_menu_text(), classes="model-menu", id="model-menu-panel")
+        debate_view.mount(menu)
         debate_view.scroll_end(animate=False)
         self.query_one(
             "#user-input", Input
         ).placeholder = "Choose Agent A, B, C, D, E model numbers, e.g. 1 2 5"
+
+    def _dismiss_model_menu(self) -> None:
+        """Remove the model picker panel so the transcript stays clean."""
+
+        debate_view = self.query_one("#debate-view", DebateView)
+        for panel in debate_view.query("#model-menu-panel"):
+            panel.remove()
 
     async def action_reasoning(self, message: str) -> None:
         """Switch reasoning level for all agents (session-memory).
@@ -590,6 +598,22 @@ class DebateApp(App):
         self.reset_turn_cursor()
         save_debate_state(tuple(selected_names), self.state_path)
         self.model_selection_active = False
+
+        # Remove the model picker panel and mount a visible confirmation block.
+        self._dismiss_model_menu()
+        active_lines = [
+            f"  Agent {agent_id}: {model_name}"
+            for agent_id, model_name in zip(AGENT_IDS, selected_names)
+            if model_name != OFF_MODEL_NAME
+        ]
+        confirmation = Static(
+            "Models updated — using in this order:\n" + "\n".join(active_lines),
+            classes="user-intervention",
+        )
+        debate_view = self.query_one("#debate-view", DebateView)
+        debate_view.mount(confirmation)
+        debate_view.scroll_end(animate=False)
+
         self.query_one("#status", Static).update(self.status_text("Models updated"))
         self.configure_input("Type the debate prompt...", COMMAND_SUGGESTIONS)
         self.notify(
