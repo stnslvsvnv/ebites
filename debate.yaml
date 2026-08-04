@@ -44,13 +44,25 @@ workers:
     launch: 'opencode run --model opencode-go/glm-5.2 --dangerously-skip-permissions "{{PROMPT}}"'
     description: "GLM 5.2"
 
+  glm-go:
+    launch: 'opencode run --model opencode-go/glm-5.2 --dangerously-skip-permissions "{{PROMPT}}"'
+    description: "GLM 5.2 via opencode-go"
+
   glm-9router:
     launch: 'opencode run --pure --model 9router/glm-cn/glm-5.2 --variant max --dangerously-skip-permissions --print-logs "{{PROMPT}}"'
     description: "GLM 5.2 via 9router (5A-compatible)"
 
   qwen:
-    launch: 'opencode run --model opencode-go/qwen3.7-max --dangerously-skip-permissions "{{PROMPT}}"'
-    description: "Qwen3.7 Max"
+    launch: 'opencode run --model opencode-go/qwen3.8-max --dangerously-skip-permissions "{{PROMPT}}"'
+    description: "Qwen3.8 Max"
+
+  grok:
+    launch: 'opencode run --model opencode-go/grok-4.5 --dangerously-skip-permissions "{{PROMPT}}"'
+    description: "Grok 4.5 via opencode-go"
+
+  kimi-k3:
+    launch: 'opencode run --model opencode-go/kimi-k3 --dangerously-skip-permissions "{{PROMPT}}"'
+    description: "Kimi K3 via opencode-go"
 
   # === Fast tasks ===
 
@@ -78,19 +90,6 @@ workers:
     prompt_file_launch: 'codex exec < {{PROMPT_FILE}}'
     description: "OpenAI Codex"
 
-  # === DeepSeek via direct API ===
-  deepseek-api-pro:
-    launch: 'opencode run --model deepseek/deepseek-v4-pro --variant max --dangerously-skip-permissions "{{PROMPT}}"'
-    description: "DeepSeek v4 Pro via direct API"
-
-  deepseek-api-flash:
-    launch: 'opencode run --model deepseek/deepseek-v4-flash --dangerously-skip-permissions "{{PROMPT}}"'
-    description: "DeepSeek v4 Flash via direct API"
-
-  deepseek-reasoner:
-    launch: 'opencode run --model deepseek/deepseek-reasoner --dangerously-skip-permissions "{{PROMPT}}"'
-    description: "DeepSeek Reasoner (R1) via direct API"
-
 # Prompt substitution contract:
 #   launch line: workers.<name>.launch with {{PROMPT}} replaced by prompt text
 #   optional prompt-file line: workers.<name>.prompt_file_launch with
@@ -107,11 +106,6 @@ profiles:
     investigation: "claude"
     implementation: "claude"
     review: "claude"
-
-  deepseek-api:
-    investigation: "deepseek-api-pro"
-    implementation: "deepseek-api-pro"
-    review: "deepseek-api-pro"
 
   fast:
     investigation: "deepseek-flash"
