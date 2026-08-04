@@ -22,7 +22,10 @@ tmux sessions until consensus or max turns, then save a transcript.
 ## How to run
 
 The CLI must be installed (see repo README): `debate` on PATH, or
-`<venv>/bin/debate`. Model workers live in `models.yaml`.
+`<venv>/bin/debate`. The single config file is `debate.yaml` (settings,
+presets, model workers, profiles); this skill ships a synced copy so agents
+can inspect the exact worker registry and presets without cloning the repo.
+Use `--models-config <path/to/debate.yaml>` to point at a specific copy.
 
 TUI:
 

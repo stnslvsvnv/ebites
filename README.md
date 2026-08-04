@@ -39,11 +39,11 @@ python3 -m venv .venv
 
 ## Configure
 
-Edit `debate.yaml` to choose defaults:
+`debate.yaml` is the single config file: settings, presets, model workers, and
+profiles in one place. A synced copy ships inside the skill directory
+(`skills/debate/debate.yaml`, verified by test).
 
 ```yaml
-models_config: "models.yaml"
-
 default:
   models: ["deepseek-pro", "codex", "off"]
   max_turns: null
@@ -63,7 +63,7 @@ presets:
 `off` disables a slot. The `council` preset runs four agents. Use up to five
 names in `--models`.
 
-Edit `models.yaml` to define model launch lines:
+Workers are defined in the same file:
 
 ```yaml
 workers:
@@ -90,7 +90,7 @@ debate --models codex,deepseek-pro
 debate --models deepseek-pro,codex,glm,qwen,claude
 debate --preset council
 debate --max-turns 5
-debate --models-config /path/to/models.yaml
+debate --models-config /path/to/debate.yaml
 ```
 
 Inside the TUI:

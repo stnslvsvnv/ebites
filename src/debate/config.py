@@ -11,7 +11,6 @@ from typing import Any, Sequence
 import yaml
 
 DEFAULT_DEBATE_CONFIG_PATH = Path("debate.yaml")
-DEFAULT_MODELS_CONFIG_PATH = Path("models.yaml")
 DEFAULT_DEBATE_STATE_PATH = Path(".debate/state.yaml")
 OFF_MODEL_NAME = "off"
 BUILT_IN_MODELS = ("deepseek-pro", "codex", OFF_MODEL_NAME)
@@ -46,18 +45,16 @@ def load_debate_config(path: Path = DEFAULT_DEBATE_CONFIG_PATH) -> dict[str, Any
     return load_yaml_config(path)
 
 
-def load_models_config(path: Path = DEFAULT_MODELS_CONFIG_PATH) -> dict[str, Any]:
+def load_models_config(path: Path = DEFAULT_DEBATE_CONFIG_PATH) -> dict[str, Any]:
     if not path.exists():
         raise ValueError(f"{path} not found")
     return load_yaml_config(path)
 
 
 def resolve_models_config_path(args: argparse.Namespace, debate_config: dict[str, Any]) -> Path:
-    """Resolve the model registry path from CLI, debate config, or default."""
+    """Resolve the single config file path from CLI or default."""
 
-    raw_path = getattr(args, "models_config", None) or debate_config.get(
-        "models_config", DEFAULT_MODELS_CONFIG_PATH
-    )
+    raw_path = getattr(args, "models_config", None) or DEFAULT_DEBATE_CONFIG_PATH
     if isinstance(raw_path, Path):
         return raw_path.expanduser()
     if not isinstance(raw_path, str) or not raw_path.strip():

@@ -3,13 +3,15 @@ from argparse import Namespace
 from pathlib import Path
 
 import pytest
+import yaml
 from textual.widgets import Input
 
 from debate.cli import resolve_model_selection
 from debate.config import (
-    DEFAULT_MODELS_CONFIG_PATH,
+    DEFAULT_DEBATE_CONFIG_PATH,
     DebateRuntimeConfig,
     load_debate_state,
+    load_models_config,
     resolve_debate_runtime_config,
     resolve_models_config_path,
     save_debate_state,
@@ -235,22 +237,38 @@ def test_debate_state_round_trip(tmp_path):
     }
 
 
-def test_models_config_path_defaults_to_agent_models_yaml():
-    assert resolve_models_config_path(_args(), {}) == DEFAULT_MODELS_CONFIG_PATH
-
-
-def test_models_config_path_reads_debate_config():
-    config = {"models_config": "custom/models.yaml"}
-
-    assert resolve_models_config_path(_args(), config) == Path("custom/models.yaml")
+def test_models_config_path_defaults_to_debate_yaml():
+    assert resolve_models_config_path(_args(), {}) == DEFAULT_DEBATE_CONFIG_PATH
 
 
 def test_models_config_path_cli_override_wins():
-    config = {"models_config": "custom/models.yaml"}
+    path = resolve_models_config_path(_args(models_config="override/debate.yaml"), {})
 
-    path = resolve_models_config_path(_args(models_config="override/models.yaml"), config)
+    assert path == Path("override/debate.yaml")
 
-    assert path == Path("override/models.yaml")
+
+def test_load_models_config_reads_workers_from_single_config(tmp_path):
+    config = tmp_path / "debate.yaml"
+    config.write_text(
+        "workers:\n"
+        "  codex:\n"
+        "    launch: 'codex exec \"{{PROMPT}}\"'\n"
+        "default:\n"
+        "  models: [codex, deepseek-pro, \"off\"]\n",
+        encoding="utf-8",
+    )
+
+    loaded = load_models_config(config)
+
+    assert loaded["workers"]["codex"]["launch"] == 'codex exec "{{PROMPT}}"'
+    assert loaded["default"]["models"] == ["codex", "deepseek-pro", "off"]
+
+
+def test_skill_debate_yaml_matches_root_config():
+    root = yaml.safe_load(Path("debate.yaml").read_text(encoding="utf-8"))
+    skill = yaml.safe_load(Path("skills/debate/debate.yaml").read_text(encoding="utf-8"))
+
+    assert root == skill
 
 
 def test_runner_uses_wrapper_script_when_no_prompt_file_launch(tmp_path):

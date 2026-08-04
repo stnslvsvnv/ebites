@@ -1,9 +1,31 @@
-# Worker Model Configuration
-#
-# Human/agent-readable launch table for debate workers. The orchestrator copies
-# a worker's `launch` line and replaces `{{PROMPT}}` with the actual prompt
-# argument, usually `"$(cat .../prompt.txt)"`. Workers that support stdin/file
-# redirection can define `prompt_file_launch` with `{{PROMPT_FILE}}`.
+# Single debate config: settings, presets, model workers, and profiles.
+# This file is the canonical config; skills/debate/debate.yaml mirrors it
+# (verified by test_skill_debate_yaml_matches_root_config).
+
+default:
+  models: ["deepseek-pro", "codex", "off"]
+  max_turns: null
+  poll_interval_seconds: 1.0
+  auto_save: false
+  display_mode: "final"
+  save_raw_output: true
+
+presets:
+  fast:
+    models: ["deepseek-flash", "glm", "off"]
+    max_turns: 4
+
+  strong:
+    models: ["deepseek-pro", "codex", "off"]
+    max_turns: 8
+
+  claude:
+    models: ["claude", "claude", "off"]
+    max_turns: 6
+
+  council:
+    models: ["deepseek-pro", "codex", "glm", "qwen", "off"]
+    max_turns: 6
 
 workers:
   # === Investigation / strong reasoning ===

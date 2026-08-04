@@ -140,7 +140,7 @@ def parse_args():
     parser.add_argument(
         "--models-config",
         type=str,
-        help="Path to models.yaml registry (default: models.yaml or models_config in debate config)",
+        help="Path to the single debate config file (default: debate.yaml)",
     )
 
     parser.add_argument(
