@@ -28,47 +28,12 @@ presets:
     max_turns: 6
 
 workers:
-  # === Investigation / strong reasoning ===
+  # === Claude standalone CLI (Opus) ===
 
-  deepseek-pro:
-    launch: 'opencode run --model deepseek/deepseek-v4-pro --variant max --dangerously-skip-permissions "{{PROMPT}}"'
-    description: "DS4 Pro"
-
-  deepseek-pro-9router:
-    launch: 'opencode run --pure --model 9router/ds/deepseek-v4-pro --variant max --dangerously-skip-permissions --print-logs "{{PROMPT}}"'
-    description: "DS4 Pro via 9router (5A-compatible)"
-
-  # === Implementation ===
-
-  glm:
-    launch: 'opencode run --model 9router/glm-5.2 --variant max --dangerously-skip-permissions "{{PROMPT}}"'
-    description: "GLM 5.2"
-
-  glm-go:
-    launch: 'opencode run --model 9router/glm-5.2 --variant max --dangerously-skip-permissions "{{PROMPT}}"'
-    description: "GLM 5.2 via 9router"
-
-  glm-9router:
-    launch: 'opencode run --pure --model 9router/glm-cn/glm-5.2 --variant max --dangerously-skip-permissions --print-logs "{{PROMPT}}"'
-    description: "GLM 5.2 via 9router cn-route (5A-compatible)"
-
-  qwen:
-    launch: 'opencode run --model 9router/qwen3.8-max --variant max --dangerously-skip-permissions "{{PROMPT}}"'
-    description: "Qwen3.8 Max"
-
-  grok:
-    launch: 'opencode run --model 9router/grok-4.5 --variant max --dangerously-skip-permissions "{{PROMPT}}"'
-    description: "Grok 4.5 via 9router"
-
-  kimi-k3:
-    launch: 'opencode run --model 9router/kimi-k3 --variant max --dangerously-skip-permissions "{{PROMPT}}"'
-    description: "Kimi K3 via 9router"
-
-  # === Fast tasks ===
-
-  deepseek-flash:
-    launch: 'opencode run --model deepseek/deepseek-v4-flash --variant max --dangerously-skip-permissions "{{PROMPT}}"'
-    description: "DS4 Flash"
+  claude:
+    launch: 'printf "%s" "{{PROMPT}}" | claude --bare --add-dir . --print'
+    prompt_file_launch: 'claude --bare --add-dir . --print < {{PROMPT_FILE}}'
+    description: "Opus latest"
 
   # === Claude Fable — canonical 5A debate Claude slot ===
   # Must run through the `claude` binary. Do not route Fable through OpenCode.
@@ -78,17 +43,46 @@ workers:
     description: "Claude Fable, max effort"
     timeout_seconds: 180
 
-  # === Claude standalone CLI (Opus) ===
-  claude:
-    launch: 'printf "%s" "{{PROMPT}}" | claude --bare --add-dir . --print'
-    prompt_file_launch: 'claude --bare --add-dir . --print < {{PROMPT_FILE}}'
-    description: "Opus latest"
-
   # === Codex ===
+
   codex:
-    launch: 'codex exec "{{PROMPT}}"'
-    prompt_file_launch: 'codex exec < {{PROMPT_FILE}}'
-    description: "OpenAI Codex"
+    launch: 'codex exec -c model="cx/gpt-5.6-sol" -c model_reasoning_effort="high" "{{PROMPT}}"'
+    prompt_file_launch: 'codex exec -c model="cx/gpt-5.6-sol" -c model_reasoning_effort="high" < {{PROMPT_FILE}}'
+    description: "Codex CLI (cx/gpt-5.6-sol, high reasoning)"
+
+  # === DeepSeek ===
+
+  deepseek-flash:
+    launch: 'opencode run --model 9router/deepseek-v4-flash --variant max --dangerously-skip-permissions --print-logs "{{PROMPT}}"'
+    description: "DS4 Flash via 9router"
+
+  deepseek-pro:
+    launch: 'opencode run --model 9router/deepseek-v4-pro --variant max --dangerously-skip-permissions --print-logs "{{PROMPT}}"'
+    description: "DS4 Pro via 9router"
+
+  # === GLM ===
+
+  glm:
+    launch: 'opencode run --model 9router/glm-5.2 --variant max --dangerously-skip-permissions "{{PROMPT}}"'
+    description: "GLM 5.2"
+
+  # === Grok ===
+
+  grok:
+    launch: 'opencode run --model 9router/grok-4.5 --variant max --dangerously-skip-permissions "{{PROMPT}}"'
+    description: "Grok 4.5 via 9router"
+
+  # === Kimi ===
+
+  kimi-k3:
+    launch: 'opencode run --model 9router/kimi-k3 --variant max --dangerously-skip-permissions "{{PROMPT}}"'
+    description: "Kimi K3 via 9router"
+
+  # === Qwen ===
+
+  qwen:
+    launch: 'opencode run --model 9router/qwen3.8-max --variant max --dangerously-skip-permissions "{{PROMPT}}"'
+    description: "Qwen3.8 Max"
 
 # Prompt substitution contract:
 #   launch line: workers.<name>.launch with {{PROMPT}} replaced by prompt text
