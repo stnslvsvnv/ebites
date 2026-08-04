@@ -276,10 +276,15 @@ class DebateApp(App):
             pass
 
     def status_text(self, state: str) -> str:
+        from .orchestrator import ALL_AGENT_IDS
+
         lines = []
-        for agent_id in self.orchestrator.active_agent_ids:
-            runner = self.orchestrator.agent_runners[agent_id]
-            lines.append(f"Agent {agent_id}: {runner.model} ({runner.description})")
+        for agent_id in ALL_AGENT_IDS:
+            if agent_id in self.orchestrator.agent_runners:
+                runner = self.orchestrator.agent_runners[agent_id]
+                lines.append(f"Agent {agent_id}: {runner.model} ({runner.description})")
+            else:
+                lines.append(f"Agent {agent_id}: off")
         lines.append(f"reasoning: {self.orchestrator.reasoning_level} | {state}")
         return "\n".join(lines)
 
