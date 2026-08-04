@@ -158,6 +158,18 @@ def test_resolve_model_selection_accepts_two_models_as_third_off():
     assert model_e is None
 
 
+def test_get_model_config_names_missing_model_and_lists_available(capsys):
+    from debate.cli import get_model_config
+
+    with pytest.raises(SystemExit) as exc:
+        get_model_config(_models_yaml(), "no-such-model")
+
+    assert exc.value.code == 3
+    captured = capsys.readouterr()
+    assert "no-such-model" in captured.err
+    assert "codex" in captured.err
+
+
 def test_debate_runtime_config_reads_default_models():
     config_yaml = {
         "default": {

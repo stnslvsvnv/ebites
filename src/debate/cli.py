@@ -23,9 +23,9 @@ from .tui import run_tui
 def get_model_config(models_yaml: dict[str, Any], model_name: str) -> dict[str, Any]:
     """Get model configuration by name"""
     if model_name not in models_yaml["workers"]:
-        print(f"Error: Model '{model_name}' not found in models config")
-        print(f"Available models: {', '.join(models_yaml['workers'].keys())}")
-        sys.exit(1)
+        print(f"Error: model '{model_name}' not found in worker registry", file=sys.stderr)
+        print(f"Available models: {', '.join(sorted(models_yaml['workers'].keys()))}", file=sys.stderr)
+        sys.exit(3)
 
     config = dict(models_yaml["workers"][model_name])
     config["name"] = model_name
@@ -50,14 +50,15 @@ def resolve_model_selection(
         if model_names is None:
             print(
                 "Error: --models must specify 2 to 5 models "
-                "(e.g., codex,deepseek-pro or codex,deepseek-pro,glm,qwen,off)"
+                "(e.g., codex,deepseek-pro or codex,deepseek-pro,glm,qwen,off)",
+                file=sys.stderr,
             )
-            sys.exit(1)
+            sys.exit(3)
     elif args.profile:
         if args.profile not in models_yaml["profiles"]:
-            print(f"Error: Profile '{args.profile}' not found")
-            print(f"Available profiles: {', '.join(models_yaml['profiles'].keys())}")
-            sys.exit(1)
+            print(f"Error: Profile '{args.profile}' not found", file=sys.stderr)
+            print(f"Available profiles: {', '.join(models_yaml['profiles'].keys())}", file=sys.stderr)
+            sys.exit(3)
 
         profile = models_yaml["profiles"][args.profile]
         model_names = _normalize_model_names(
@@ -71,8 +72,8 @@ def resolve_model_selection(
         model_names = _normalize_model_names(runtime_config.models)
 
     if model_names is None:
-        print("Error: Debate requires at least two active models")
-        sys.exit(1)
+        print("Error: Debate requires at least two active models", file=sys.stderr)
+        sys.exit(3)
 
     configs = [_optional_model_config(models_yaml, model_name) for model_name in model_names]
     return configs[0], configs[1], configs[2], configs[3], configs[4]
