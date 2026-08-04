@@ -145,9 +145,9 @@ class DebateApp(App):
     }
 
     #status {
-        height: 7;
+        height: 8;
         background: $panel;
-        padding: 0 1;
+        padding: 1 1 0 1;
         layer: base;
         text-align: left;
     }

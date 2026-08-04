@@ -746,8 +746,8 @@ def test_tui_status_strip_has_compact_top_gap():
     css = DebateApp.CSS
 
     assert "#status" in css
-    assert "height: 7;" in css
-    assert "padding: 0 1;" in css
+    assert "height: 8;" in css
+    assert "padding: 1 1 0 1;" in css
 
 
 def test_initial_prompt_frame_uses_plain_text_border():
