@@ -140,13 +140,14 @@ class DebateApp(App):
 
     CSS = """
     Screen {
-        background: $surface;
+        background: #1c1b22;
         layers: base overlay;
     }
 
     #status {
         height: 8;
-        background: $panel;
+        background: #14131a;
+        color: #b9b3c9;
         padding: 1 1 0 1;
         layer: base;
         text-align: left;
@@ -154,49 +155,59 @@ class DebateApp(App):
 
     #debate-view {
         height: 1fr;
-        border: solid $primary;
+        border: solid #3a3650;
         layer: base;
     }
 
     PromptDisplay {
         margin: 1;
-        padding: 1;
-        background: $surface-darken-1;
-        border: round white;
+        padding: 1 2;
+        background: #221f2a;
+        border: round #4a4560;
         border-title-align: left;
+        color: #d8d4e0;
     }
 
     TurnDisplay {
         margin: 1;
-        padding: 1;
-        background: $surface-darken-1;
-        border: round $accent;
+        padding: 1 2;
+        background: #221f2a;
+        border: round #4a4560;
         border-title-align: left;
+        color: #d8d4e0;
     }
 
     TurnDisplay.thinking.pulse-on {
-        border: heavy $accent;
+        border: heavy #6b5f8e;
     }
 
     TurnDisplay.finished {
-        border: round $accent;
+        border: round #3a3650;
+        color: #9a93a8;
     }
 
     #input-container {
         height: auto;
-        background: $panel;
-        padding: 1;
+        background: #14131a;
+        padding: 1 2;
         layer: base;
     }
 
     Input {
         width: 100%;
+        background: #221f2a;
+        color: #e8e4f0;
+        border: round #4a4560;
+    }
+
+    Input:focus {
+        border: round #6b5f8e;
     }
 
     #help {
         height: 2;
-        background: $boost;
-        color: $text-muted;
+        background: #14131a;
+        color: #6b6577;
         text-align: center;
         layer: base;
     }
@@ -205,7 +216,7 @@ class DebateApp(App):
         layer: overlay;
         width: 100%;
         height: 100%;
-        background: black 70%;
+        background: #14131a 88%;
         align: center middle;
     }
 
@@ -213,10 +224,11 @@ class DebateApp(App):
         width: 36;
         height: 5;
         padding: 1 2;
-        border: round $accent;
-        background: $panel;
+        border: round #4a4560;
+        background: #221f2a;
         layout: horizontal;
         align: center middle;
+        color: #b9b3c9;
     }
 
     #closing-label {
@@ -227,10 +239,11 @@ class DebateApp(App):
     #closing-dots {
         width: 3;
         height: 1;
+        color: #6b5f8e;
     }
 
     #closing-dots.blink-off {
-        color: $panel;
+        color: #221f2a;
     }
     """
 

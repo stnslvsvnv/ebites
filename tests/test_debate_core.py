@@ -672,12 +672,15 @@ async def test_tui_does_not_mount_ascii_logo():
 def test_tui_uses_textual_default_theme_tokens():
     css = DebateApp.CSS
 
-    assert "$surface" in css
-    assert "$primary" in css
-    assert "$accent" in css
+    # Custom muted palette (ink-violet editorial scheme) — no default
+    # $surface/$primary/$accent tokens expected anymore.
+    assert "#14131a" in css
+    assert "#221f2a" in css
+    assert "#4a4560" in css
+    assert "$surface" not in css
+    assert "$primary" not in css
+    assert "$accent" not in css
     assert "theme-night" not in css
-    assert "#f2eadc" not in css
-    assert "#20150f" not in css
 
 
 def test_tui_status_label_uses_worker_names():
@@ -754,9 +757,9 @@ def test_initial_prompt_frame_uses_plain_text_border():
     css = DebateApp.CSS
 
     assert "PromptDisplay {" in css
-    assert "border: round white;" in css
+    assert "border: round #4a4560;" in css
     assert "TurnDisplay {" in css
-    assert "border: round $accent;" in css
+    assert "border: round #4a4560;" in css
 
 
 @pytest.mark.asyncio
