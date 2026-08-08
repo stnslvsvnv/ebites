@@ -63,8 +63,8 @@ workers:
   # === GLM ===
 
   glm:
-    launch: 'opencode run --model 9router/glm-5.2 --variant max --dangerously-skip-permissions "{{PROMPT}}"'
-    description: "GLM 5.2"
+    launch: 'opencode run --model 9router/combo-glm --variant max --dangerously-skip-permissions "{{PROMPT}}"'
+    description: "GLM via versionless combo route"
 
   # === Grok ===
 

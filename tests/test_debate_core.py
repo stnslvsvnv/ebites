@@ -282,6 +282,7 @@ def test_skill_debate_yaml_matches_root_config():
     skill = yaml.safe_load(Path("skills/debate/debate.yaml").read_text(encoding="utf-8"))
 
     assert root == skill
+    assert "--model 9router/combo-glm" in root["workers"]["glm"]["launch"]
 
 
 def test_runner_uses_wrapper_script_when_no_prompt_file_launch(tmp_path):
