@@ -37,7 +37,12 @@ def prune_unsaved_debate_tmp(
             continue
         if active_checker(session_dir.name):
             continue
-        shutil.rmtree(session_dir)
+        try:
+            shutil.rmtree(session_dir)
+        except FileNotFoundError:
+            # Another debate pruned the same directory between our glob and rmtree;
+            # the stale dir is gone either way, so pruning stays idempotent.
+            continue
         removed.append(session_dir)
     return removed
 

@@ -10,8 +10,8 @@ metadata:
 ## What I do
 
 Runs the `debate` CLI from the ebites repository: two to five AI agents
-(Claude Fable, DeepSeek, Codex, GLM, Qwen) argue over a prompt in managed
-tmux sessions until consensus or max turns, then save a transcript.
+(Claude, DeepSeek, GPT, GLM, Kimi, Qwen) argue over a prompt in managed tmux
+sessions until consensus or max turns, then save a transcript.
 
 ## When to use me
 
@@ -37,7 +37,7 @@ Headless (automation):
 
 ```zsh
 debate --headless \
-  --models claude-fable,deepseek-pro,codex \
+  --models claude-fable,deepseek-pro,gpt-5.6-sol \
   --max-turns 8 \
   --prompt-file prompt.md \
   --transcript-out transcript.md
@@ -47,8 +47,10 @@ Exit 0 = consensus or max turns; 2 = agent crash/timeout; 3 = config error.
 
 ## Rules
 
-- `claude-fable` must run through the `claude` binary, never OpenCode.
-- `claude-opus`/`opus` is forbidden in 5A debate context.
+- Every worker runs through `opencode run` against `opencode-go` or
+  `closerouter`. `claude-fable` is advertised on the Anthropic messages wire
+  only, so it needs the `closerouter-anthropic` provider; the `claude` binary
+  and 9router are no longer used.
 - Headless mode ignores `state.yaml`; always pass `--models` explicitly.
 - Read the transcript and summarize the consensus (Decision / Key arguments /
   Residual risks / Next step) for the caller.

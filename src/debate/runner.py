@@ -131,7 +131,7 @@ class ModelRunner:
         - opencode `--variant <x>`     -> `--variant <level>` (max|medium)
         - claude `--effort <x>`        -> `--effort <level>` (max|medium)
         - codex  `model_reasoning_effort="<x>"` -> `model_reasoning_effort="<codex_level>"`
-          (max -> high, medium -> medium)
+          (max -> xhigh, medium -> medium)
         """
 
         if not launch_str:
@@ -144,7 +144,7 @@ class ModelRunner:
         launch_str = re.sub(r"--effort\s+\S+", f"--effort {level}", launch_str)
 
         # codex model_reasoning_effort="..."
-        codex_effort = "high" if level == "max" else level
+        codex_effort = "xhigh" if level == "max" else level
         launch_str = re.sub(
             r'model_reasoning_effort="\w+"',
             f'model_reasoning_effort="{codex_effort}"',

@@ -19,7 +19,8 @@ Requirements:
 - Python 3.10+
 - `tmux`
 - `zsh` (wrapper scripts for non-stdin workers)
-- At least one configured AI CLI, such as `codex`, `opencode`, or `claude`
+- The `opencode` CLI, configured with the `opencode-go` providers and the
+  `closerouter` / `closerouter-anthropic` gateway entries
 
 From a checkout, inside a project venv (recommended — lets `debate` reuse the
 project's model/provider configuration):
@@ -45,19 +46,19 @@ profiles in one place. A synced copy ships inside the skill directory
 
 ```yaml
 default:
-  models: ["deepseek-pro", "codex", "off"]
+  models: ["deepseek-pro", "gpt-5.6-sol", "off"]
   max_turns: null
   display_mode: "final"
 
 presets:
   fast:
-    models: ["deepseek-flash", "glm", "off"]
+    models: ["deepseek-flash", "glm-flash", "off"]
   strong:
-    models: ["deepseek-pro", "codex", "off"]
+    models: ["deepseek-pro", "gpt-5.6-sol", "off"]
   claude:
-    models: ["claude", "claude", "off"]
+    models: ["claude", "claude-fable", "off"]
   council:
-    models: ["deepseek-pro", "codex", "glm", "qwen", "off"]
+    models: ["deepseek-pro", "gpt-5.6-sol", "glm", "qwen", "off"]
 ```
 
 `off` disables a slot. The `council` preset runs four agents. Use up to five
@@ -67,10 +68,10 @@ Workers are defined in the same file:
 
 ```yaml
 workers:
-  codex:
-    description: "Codex CLI"
-    launch: 'codex exec "{{PROMPT}}"'
-    prompt_file_launch: 'codex exec < {{PROMPT_FILE}}'
+  glm:
+    description: "GLM-5.3 via opencode-go"
+    launch: 'opencode run --model opencode-go/glm-5.3 "{{PROMPT}}"'
+    prompt_file_launch: 'opencode run --pure --model opencode-go/glm-5.3 --file {{PROMPT_FILE}}'
 ```
 
 - `{{PROMPT}}` is replaced with the prompt text. For workers that cannot take a
@@ -78,16 +79,17 @@ workers:
   prompt file into a variable.
 - `prompt_file_launch` (with `{{PROMPT_FILE}}`) is used when the CLI supports
   reading the prompt from stdin/redirection.
-- The registry ships with `claude-fable` (canonical Claude slot, runs through
-  the `claude` binary, never through OpenCode), `codex`, `deepseek-pro`,
-  `glm`, `qwen`, `deepseek-*`, and 9router aliases.
+- The registry ships with eleven workers, all running through `opencode run`:
+  `claude`, `claude-fable`, `gpt-5.6-sol`, and `gpt-5.6-luna` via the
+  CloseRouter gateway, plus `deepseek-pro`, `deepseek-flash`, `glm`,
+  `glm-flash`, `kimi-k3`, `qwen`, and `qwen-flash` via `opencode-go`.
 
 ## Run (TUI)
 
 ```zsh
 debate
-debate --models codex,deepseek-pro
-debate --models deepseek-pro,codex,glm,qwen,claude
+debate --models deepseek-pro,gpt-5.6-sol
+debate --models deepseek-pro,gpt-5.6-sol,glm,qwen,claude
 debate --preset council
 debate --max-turns 5
 debate --reasoning medium
@@ -98,7 +100,7 @@ Inside the TUI:
 
 - `/new` starts a fresh debate and closes current agent sessions.
 - `/models` opens the model picker (slots A-E).
-- `/reasoning max|medium` switches reasoning effort for all agents (session-memory). `max` (default) = high effort; `medium` = quick debates. Workers without reasoning control (e.g. `claude`/Opus) keep default and warn once.
+- `/reasoning max|medium` switches reasoning effort for all agents (session-memory). `max` (default) = high effort; `medium` = quick debates. Every worker launches through `opencode run --variant`, so all of them honour the switch.
 - `/save` writes `.debate/tmp/debate-{session_id}/transcript.md`.
 - `Esc` pauses or resumes.
 - `Ctrl+C` quits and cleans up agent sessions.
@@ -111,10 +113,7 @@ Per-worker substitution (launch-time, no runtime switch):
 
 | Worker family | `max` | `medium` |
 |---------------|------|----------|
-| opencode (`deepseek-*`, `glm`, `grok`, `kimi-k3`, `qwen`) | `--variant max` | `--variant medium` |
-| `claude-fable` | `--effort max` | `--effort medium` |
-| `codex` | `model_reasoning_effort="high"` | `model_reasoning_effort="medium"` |
-| `claude` (Opus) | not supported (warn) | not supported (warn) |
+| every worker (`opencode run`) | `--variant max` | `--variant medium` |
 
 ## Run (headless)
 
@@ -123,7 +122,7 @@ TUI and write the transcript to a fixed path.
 
 ```zsh
 debate --headless \
-  --models claude-fable,deepseek-pro,codex \
+  --models claude-fable,deepseek-pro,gpt-5.6-sol \
   --max-turns 8 \
   --reasoning medium \
   --prompt-file debate/prompt.md \

@@ -1,4 +1,5 @@
 import shlex
+import shutil
 import time
 from argparse import Namespace
 from pathlib import Path
@@ -282,7 +283,24 @@ def test_skill_debate_yaml_matches_root_config():
     skill = yaml.safe_load(Path("skills/debate/debate.yaml").read_text(encoding="utf-8"))
 
     assert root == skill
-    assert "--model 9router/combo-glm" in root["workers"]["glm"]["launch"]
+
+
+def test_opencode_workers_require_prompt_file_launch_for_headless_transport():
+    config = yaml.safe_load(Path("debate.yaml").read_text(encoding="utf-8"))
+
+    opencode_workers = {
+        name: worker
+        for name, worker in config["workers"].items()
+        if "opencode run" in worker["launch"]
+    }
+    assert opencode_workers, "expected at least one opencode-backed worker"
+
+    for name, worker in opencode_workers.items():
+        assert "prompt_file_launch" in worker, f"worker {name} must define prompt_file_launch"
+        assert "{{PROMPT_FILE}}" in worker["prompt_file_launch"]
+        assert "--file {{PROMPT_FILE}}" in worker["prompt_file_launch"]
+        assert "2>/dev/null" not in worker["prompt_file_launch"], "stderr must stay visible"
+        assert "{{PROMPT}}" in worker["launch"]
 
 
 def test_runner_uses_wrapper_script_when_no_prompt_file_launch(tmp_path):
@@ -343,6 +361,15 @@ def test_runner_can_pass_prompt_file_path_without_inlining_prompt(tmp_path):
     assert "$(cat " not in command
     assert "claude --bare --add-dir . --print < " in command
     assert str(process.prompt_file) in command
+
+
+def test_max_reasoning_maps_codex_to_xhigh():
+    template = 'codex exec -c model="cx/gpt-5.6-sol" -c model_reasoning_effort="high" "{{PROMPT}}"'
+
+    rendered = ModelRunner._apply_reasoning(template, "max")
+
+    assert 'model_reasoning_effort="xhigh"' in rendered
+    assert 'model_reasoning_effort="high"' not in rendered
 
 
 def test_runner_running_state_and_clean_output_use_sentinel(tmp_path):
@@ -566,6 +593,21 @@ def test_prune_unsaved_debate_tmp_deletes_only_unsaved_inactive_dirs(tmp_path):
     assert saved.exists()
     assert active.exists()
     assert other.exists()
+
+
+def test_prune_unsaved_debate_tmp_tolerates_concurrent_removal(tmp_path):
+    tmp_root = tmp_path / ".debate" / "tmp"
+    stale = tmp_root / "debate-stale"
+    stale.mkdir(parents=True)
+
+    def lose_race_to_other_debate(session_name):
+        # A concurrent debate deletes the same stale dir after this process
+        # already globbed it, so the rmtree below targets a missing path.
+        shutil.rmtree(stale)
+        return False
+
+    assert prune_unsaved_debate_tmp(tmp_root, is_session_active=lose_race_to_other_debate) == []
+    assert not stale.exists()
 
 
 def test_orchestrator_final_answer_fallback_uses_tail_without_marker():
