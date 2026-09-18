@@ -16,6 +16,16 @@ default:
   save_raw_output: true
 
 presets:
+  # Debate levels: `debate --low` / `debate --high` select these presets and
+  # switch on headless mode. Both still require --prompt-file/--transcript-out.
+  low:
+    models: ["deepseek-flash", "glm-flash", "qwen-flash"]
+    max_turns: 4
+
+  high:
+    models: ["claude", "gpt-5.6-sol", "glm"]
+    max_turns: 8
+
   fast:
     models: ["deepseek-flash", "glm-flash", "off"]
     max_turns: 4
@@ -48,12 +58,17 @@ workers:
     prompt_file_launch: 'opencode run --pure --model closerouter-anthropic/claude-fable-5 --variant max --dangerously-skip-permissions "Execute attached prompt exactly. Reply only with your debate turn." --file {{PROMPT_FILE}}'
     description: "Claude Fable 5 via CloseRouter (Anthropic wire)"
 
-  # === OpenAI via CloseRouter ===
+  # === OpenAI via codex CLI ===
+  # The `closerouter` model provider is declared in ~/.codex/config.toml
+  # (base_url https://api.closerouter.dev/v1, wire_api "responses").
+  # `set -a; . .env` keeps the API key out of this repo — never inline it here.
 
   gpt-5.6-sol:
-    launch: 'opencode run --model closerouter/openai/gpt-5.6-sol --variant max --dangerously-skip-permissions "{{PROMPT}}"'
-    prompt_file_launch: 'opencode run --pure --model closerouter/openai/gpt-5.6-sol --variant max --dangerously-skip-permissions "Execute attached prompt exactly. Reply only with your debate turn." --file {{PROMPT_FILE}}'
-    description: "GPT-5.6 Sol via CloseRouter"
+    launch: 'set -a; . "$HOME/.omp/agent/.env"; set +a; codex exec --skip-git-repo-check -c model_provider="closerouter" -c model="openai/gpt-5.6-sol" -c model_reasoning_effort="high" "{{PROMPT}}"'
+    prompt_file_launch: 'set -a; . "$HOME/.omp/agent/.env"; set +a; codex exec --skip-git-repo-check -c model_provider="closerouter" -c model="openai/gpt-5.6-sol" -c model_reasoning_effort="high" < {{PROMPT_FILE}}'
+    description: "GPT-5.6 Sol via codex CLI"
+
+  # === OpenAI via CloseRouter (opencode) ===
 
   gpt-5.6-luna:
     launch: 'opencode run --model closerouter/openai/gpt-5.6-luna --variant max --dangerously-skip-permissions "{{PROMPT}}"'

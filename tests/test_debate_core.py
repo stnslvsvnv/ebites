@@ -172,6 +172,41 @@ def test_get_model_config_names_missing_model_and_lists_available(capsys):
     assert "codex" in captured.err
 
 
+def test_debate_level_flags_select_preset_and_force_headless():
+    from debate.cli import apply_debate_level
+
+    for flag in ("low", "high"):
+        args = _args(**{flag: True}, headless=False)
+        apply_debate_level(args)
+
+        assert args.preset == flag
+        assert args.headless is True
+
+
+def test_debate_level_flags_reject_explicit_model_selection(capsys):
+    from debate.cli import apply_debate_level
+
+    for conflict in ({"models": "glm,qwen"}, {"profile": "current"}, {"preset": "council"}):
+        args = _args(low=True, **conflict)
+        with pytest.raises(SystemExit) as exc:
+            apply_debate_level(args)
+
+        assert exc.value.code == 3
+        assert "--low/--high cannot be combined" in capsys.readouterr().err
+
+
+def test_shipped_config_references_only_registered_workers():
+    config = yaml.safe_load(Path("debate.yaml").read_text(encoding="utf-8"))
+    workers = set(config["workers"])
+
+    referenced = set(config["default"]["models"])
+    referenced.update(model for preset in config["presets"].values() for model in preset["models"])
+    referenced.update(model for profile in config["profiles"].values() for model in profile.values())
+    referenced.discard("off")
+
+    assert referenced <= workers, f"unregistered workers referenced: {sorted(referenced - workers)}"
+
+
 def test_debate_runtime_config_reads_default_models():
     config_yaml = {
         "default": {
@@ -252,13 +287,45 @@ def test_debate_state_round_trip(tmp_path):
 
 
 def test_models_config_path_defaults_to_debate_yaml():
-    assert resolve_models_config_path(_args(), {}) == DEFAULT_DEBATE_CONFIG_PATH
+    assert resolve_models_config_path(_args()) == DEFAULT_DEBATE_CONFIG_PATH
 
 
 def test_models_config_path_cli_override_wins():
-    path = resolve_models_config_path(_args(models_config="override/debate.yaml"), {})
+    path = resolve_models_config_path(_args(models_config="override/debate.yaml"))
 
     assert path == Path("override/debate.yaml")
+
+
+def test_models_config_path_prefers_project_local_over_user_config(monkeypatch, tmp_path):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    user_config = tmp_path / "xdg" / "debate" / "debate.yaml"
+    user_config.parent.mkdir(parents=True)
+    user_config.write_text("workers: {}\n", encoding="utf-8")
+    project = tmp_path / "project"
+    project.mkdir()
+    (project / "debate.yaml").write_text("workers: {}\n", encoding="utf-8")
+    monkeypatch.chdir(project)
+
+    assert resolve_models_config_path(_args()) == DEFAULT_DEBATE_CONFIG_PATH
+
+
+def test_models_config_path_falls_back_to_user_config(monkeypatch, tmp_path):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    user_config = tmp_path / "xdg" / "debate" / "debate.yaml"
+    user_config.parent.mkdir(parents=True)
+    user_config.write_text("workers: {}\n", encoding="utf-8")
+    project = tmp_path / "project"
+    project.mkdir()
+    monkeypatch.chdir(project)
+
+    assert resolve_models_config_path(_args()) == user_config
+
+
+def test_models_config_path_without_any_config_keeps_default(monkeypatch, tmp_path):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "empty"))
+    monkeypatch.chdir(tmp_path)
+
+    assert resolve_models_config_path(_args()) == DEFAULT_DEBATE_CONFIG_PATH
 
 
 def test_load_models_config_reads_workers_from_single_config(tmp_path):

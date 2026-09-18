@@ -45,12 +45,27 @@ debate --headless \
 
 Exit 0 = consensus or max turns; 2 = agent crash/timeout; 3 = config error.
 
+Levels (preset + headless in one flag):
+
+```zsh
+debate --low  --prompt-file prompt.md --transcript-out transcript.md
+debate --high --prompt-file prompt.md --transcript-out transcript.md
+```
+
+`--low` = DeepSeek V4.1 Flash + GLM-5.3 Flash + Qwen3.8 Flash; `--high` =
+Claude Opus 5 + GPT-5.6 Sol + GLM-5.3. Both read their model list from the
+`low`/`high` presets in `debate.yaml`. Artifacts land in the directory you run
+`debate` from.
+
 ## Rules
 
-- Every worker runs through `opencode run` against `opencode-go` or
-  `closerouter`. `claude-fable` is advertised on the Anthropic messages wire
-  only, so it needs the `closerouter-anthropic` provider; the `claude` binary
-  and 9router are no longer used.
-- Headless mode ignores `state.yaml`; always pass `--models` explicitly.
+- Every worker runs through `opencode run` except `gpt-5.6-sol`, which runs
+  through the `codex` CLI with the `closerouter` model provider.
+  `claude-fable` is advertised on the Anthropic messages wire only, so it needs
+  the `closerouter-anthropic` provider; the `claude` binary and 9router are no
+  longer used.
+- `--low`/`--high` imply `--headless` and reject `--models`/`--profile`/`--preset`.
+- Headless mode ignores `state.yaml`; always name the roster explicitly, via
+  `--models`, `--preset`, or a level flag.
 - Read the transcript and summarize the consensus (Decision / Key arguments /
   Residual risks / Next step) for the caller.

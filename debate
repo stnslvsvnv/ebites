@@ -1,5 +1,12 @@
 #!/usr/bin/env zsh
 # Local launcher for source checkouts.
+#
+# Deliberately does NOT cd into this checkout: the caller's working directory is
+# preserved so every debate artifact (.debate/state.yaml, .debate/tmp/, saved
+# transcripts) lands in the project the debate was started from. The package
+# and the canonical debate.yaml still resolve to this checkout, and an explicit
+# --models-config on the command line still wins.
 
-cd "$(dirname "$0")" || exit 1
-PYTHONPATH="$PWD/src${PYTHONPATH:+:$PYTHONPATH}" exec python3 -m debate.cli "$@"
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+PYTHONPATH="$ROOT/src${PYTHONPATH:+:$PYTHONPATH}" exec python3 -m debate.cli \
+  --models-config "$ROOT/debate.yaml" "$@"

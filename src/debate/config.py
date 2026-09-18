@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Sequence
@@ -51,15 +52,36 @@ def load_models_config(path: Path = DEFAULT_DEBATE_CONFIG_PATH) -> dict[str, Any
     return load_yaml_config(path)
 
 
-def resolve_models_config_path(args: argparse.Namespace, debate_config: dict[str, Any]) -> Path:
-    """Resolve the single config file path from CLI or default."""
+def default_user_config_path() -> Path:
+    """User-level fallback config, consulted only when the working dir has none."""
 
-    raw_path = getattr(args, "models_config", None) or DEFAULT_DEBATE_CONFIG_PATH
-    if isinstance(raw_path, Path):
-        return raw_path.expanduser()
-    if not isinstance(raw_path, str) or not raw_path.strip():
-        raise ValueError("models_config must be a non-empty path")
-    return Path(raw_path.strip()).expanduser()
+    config_home = os.environ.get("XDG_CONFIG_HOME")
+    base = Path(config_home) if config_home else Path.home() / ".config"
+    return base / "debate" / "debate.yaml"
+
+
+def resolve_models_config_path(args: argparse.Namespace) -> Path:
+    """Resolve the config file: --models-config, project-local, then user-level.
+
+    A `debate.yaml` in the working directory always wins, so a project can pin
+    its own roster; the user-level copy is the fallback that lets `debate` run
+    from any directory. Either way artifacts stay in the working directory.
+    """
+
+    raw_path = getattr(args, "models_config", None)
+    if raw_path:
+        if isinstance(raw_path, Path):
+            return raw_path.expanduser()
+        if not isinstance(raw_path, str) or not raw_path.strip():
+            raise ValueError("models_config must be a non-empty path")
+        return Path(raw_path.strip()).expanduser()
+
+    if DEFAULT_DEBATE_CONFIG_PATH.exists():
+        return DEFAULT_DEBATE_CONFIG_PATH
+    user_config_path = default_user_config_path()
+    if user_config_path.exists():
+        return user_config_path
+    return DEFAULT_DEBATE_CONFIG_PATH
 
 
 def load_debate_state(path: Path = DEFAULT_DEBATE_STATE_PATH) -> dict[str, Any]:

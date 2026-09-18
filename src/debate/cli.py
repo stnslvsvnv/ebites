@@ -105,6 +105,24 @@ def _optional_model_config(models_yaml: dict[str, Any], model_name: str) -> dict
     return get_model_config(models_yaml, model_name)
 
 
+def apply_debate_level(args: argparse.Namespace) -> None:
+    """Map --low/--high onto their presets and switch on headless mode."""
+
+    if not (getattr(args, "low", False) or getattr(args, "high", False)):
+        return
+    if getattr(args, "models", None) or getattr(args, "profile", None) or getattr(
+        args, "preset", None
+    ):
+        print(
+            "Error: --low/--high cannot be combined with --models, --profile or --preset",
+            file=sys.stderr,
+        )
+        sys.exit(3)
+
+    args.preset = "low" if getattr(args, "low", False) else "high"
+    args.headless = True
+
+
 def parse_args():
     """Parse command line arguments"""
     parser = argparse.ArgumentParser(
@@ -133,6 +151,21 @@ def parse_args():
     parser.add_argument("--profile", type=str, help="Use a profile from models config")
 
     parser.add_argument("--preset", type=str, help="Use a preset from debate.yaml")
+
+    level_group = parser.add_mutually_exclusive_group()
+    level_group.add_argument(
+        "--low",
+        action="store_true",
+        help=(
+            "Headless quick debate (preset 'low'): "
+            "DeepSeek V4.1 Flash, GLM-5.3 Flash, Qwen3.8 Flash"
+        ),
+    )
+    level_group.add_argument(
+        "--high",
+        action="store_true",
+        help="Headless deep debate (preset 'high'): Claude Opus 5, GPT-5.6 Sol, GLM-5.3",
+    )
 
     parser.add_argument(
         "--max-turns", type=int, help="Maximum number of turns (default: unlimited until consensus)"
@@ -187,11 +220,12 @@ def parse_args():
 def main():
     """Main entrypoint"""
     args = parse_args()
+    apply_debate_level(args)
     try:
-        debate_config = load_debate_config()
+        models_config_path = resolve_models_config_path(args)
+        debate_config = load_debate_config(models_config_path)
         debate_state = load_debate_state()
         runtime_config = resolve_debate_runtime_config(args, debate_config, debate_state)
-        models_config_path = resolve_models_config_path(args, debate_config)
         models_yaml = load_models_config(models_config_path)
     except ValueError as exc:
         print(f"Error: {exc}")
