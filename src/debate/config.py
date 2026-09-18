@@ -94,6 +94,27 @@ def save_debate_state(models: Sequence[str], path: Path = DEFAULT_DEBATE_STATE_P
     path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
 
 
+def _known_state_models(raw_models: Any, debate_config: dict[str, Any]) -> tuple[str, ...]:
+    """Last-used models, minus entries the worker registry no longer defines.
+
+    Persisted state is a convenience memory, not an authority: after a roster
+    change it can name workers that no longer exist, and keeping them would
+    fail every later run at registry lookup.
+    """
+
+    if not isinstance(raw_models, (list, tuple)):
+        return ()
+
+    known = [_normalize_model_name(model) for model in raw_models]
+    workers = debate_config.get("workers")
+    if isinstance(workers, dict) and workers:
+        known = [name for name in known if name == OFF_MODEL_NAME or name in workers]
+
+    if sum(name != OFF_MODEL_NAME for name in known) < 2:
+        return ()
+    return tuple(known)
+
+
 def resolve_debate_runtime_config(
     args: argparse.Namespace,
     debate_config: dict[str, Any],
@@ -115,9 +136,8 @@ def resolve_debate_runtime_config(
     merged = {**default_section, **preset_section}
 
     state_section = debate_state or {}
-    models = _resolve_models(
-        state_section.get("last_models", merged.get("models", BUILT_IN_MODELS))
-    )
+    state_models = _known_state_models(state_section.get("last_models"), debate_config)
+    models = _resolve_models(state_models or merged.get("models", BUILT_IN_MODELS))
     if getattr(args, "preset", None):
         models = _resolve_models(merged.get("models", models))
     if getattr(args, "models", None):

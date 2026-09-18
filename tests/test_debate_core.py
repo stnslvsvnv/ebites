@@ -1,3 +1,4 @@
+import re
 import shlex
 import shutil
 import time
@@ -258,6 +259,30 @@ def test_debate_runtime_config_cli_overrides_last_state():
     )
 
     assert runtime_config.models == ("codex", "glm", "off", "off", "off")
+
+
+def test_debate_runtime_config_drops_state_models_missing_from_registry():
+    config_yaml = {
+        "workers": {"glm": {"launch": "x"}, "qwen": {"launch": "x"}},
+        "default": {"models": ["glm", "qwen", "off"]},
+    }
+    state_yaml = {"last_models": ["codex", "grok", "glm", "qwen", "kimi-k3"]}
+
+    runtime_config = resolve_debate_runtime_config(_args(), config_yaml, state_yaml)
+
+    assert runtime_config.models == ("glm", "qwen", "off", "off", "off")
+
+
+def test_debate_runtime_config_falls_back_to_default_when_state_is_fully_stale():
+    config_yaml = {
+        "workers": {"glm": {"launch": "x"}, "qwen": {"launch": "x"}},
+        "default": {"models": ["qwen", "glm", "off"]},
+    }
+    state_yaml = {"last_models": ["codex", "grok", "off", "off", "off"]}
+
+    runtime_config = resolve_debate_runtime_config(_args(), config_yaml, state_yaml)
+
+    assert runtime_config.models == ("qwen", "glm", "off", "off", "off")
 
 
 def test_debate_runtime_config_rejects_less_than_two_active_models():
@@ -821,6 +846,34 @@ def test_turn_display_uses_textual_border_title_not_manual_box():
     assert turn.has_class("finished")
 
 
+def test_model_menu_lists_each_model_once_with_its_description():
+    models_yaml = {
+        "workers": {
+            "glm": {"launch": "run glm", "description": "GLM via opencode-go"},
+            "qwen": {"launch": "run qwen", "description": "Qwen via opencode-go"},
+        }
+    }
+    app = DebateApp(
+        DebateOrchestrator(
+            model_a_config={"name": "glm", "launch": "run glm"},
+            model_b_config={"name": "qwen", "launch": "run qwen"},
+        ),
+        models_yaml=models_yaml,
+    )
+
+    numbered = [
+        line.strip()
+        for line in app.model_menu_text().splitlines()
+        if re.match(r"\d+\. ", line.strip())
+    ]
+
+    assert len(numbered) == 3
+    for index, name in enumerate(app.available_model_names(), 1):
+        matching = [line for line in numbered if line.startswith(f"{index}. {name}")]
+        assert len(matching) == 1, f"{name} must have exactly one entry"
+        assert matching[0].count(name) == 1, f"{name} must be listed once, not once per column"
+
+
 @pytest.mark.asyncio
 async def test_tui_shows_initial_prompt_before_first_turn(monkeypatch):
     app = DebateApp(
@@ -977,9 +1030,6 @@ async def test_tui_models_menu_selects_three_agents_and_off(tmp_path):
     async with app.run_test():
         await app.handle_user_message("/models")
         menu_text = str(app.query(".model-menu").last().render())
-        assert "Agent A" in menu_text
-        assert "Agent B" in menu_text
-        assert "Agent C" in menu_text
         assert "off" in menu_text
         await app.handle_user_message("3 1 5")
 
@@ -990,6 +1040,60 @@ async def test_tui_models_menu_selects_three_agents_and_off(tmp_path):
     assert load_debate_state(tmp_path / "state.yaml") == {
         "last_models": ["glm", "codex", "off", "off", "off"]
     }
+
+
+def _contrast_ratio(color_a, color_b) -> float:
+    def lin(channel: int) -> float:
+        value = channel / 255
+        return value / 12.92 if value <= 0.03928 else ((value + 0.055) / 1.055) ** 2.4
+
+    def luminance(color) -> float:
+        return 0.2126 * lin(color.r) + 0.7152 * lin(color.g) + 0.0722 * lin(color.b)
+
+    high, low = sorted((luminance(color_a), luminance(color_b)), reverse=True)
+    return (high + 0.05) / (low + 0.05)
+
+
+@pytest.mark.asyncio
+async def test_thinking_pulse_stays_visually_distinct_from_resting_border():
+    app = DebateApp(
+        DebateOrchestrator(model_a_config=_worker("glm"), model_b_config=_worker("qwen")),
+    )
+
+    async with app.run_test() as pilot:
+        debate_view = app.query_one("#debate-view", DebateView)
+        turn = TurnDisplay("A", 1)
+        turn.add_class("pulse-on")
+        await debate_view.mount(turn)
+        await pilot.pause()
+        _, pulse_color = turn.styles.border_top
+
+        turn.remove_class("pulse-on")
+        await pilot.pause()
+        _, resting_color = turn.styles.border_top
+
+    # The thinking indicator is a blinking border. If the two states sit too
+    # close together the blink is imperceptible no matter that it still toggles,
+    # so hold the pulse to the WCAG non-text UI floor of 3:1.
+    assert _contrast_ratio(pulse_color, resting_color) >= 3.0
+
+
+@pytest.mark.asyncio
+async def test_tui_models_menu_reopens_without_duplicate_panel(tmp_path):
+    app = DebateApp(
+        DebateOrchestrator(
+            model_a_config=_worker("deepseek-pro"),
+            model_b_config=_worker("codex"),
+        ),
+        models_yaml=_models_yaml(),
+        state_path=tmp_path / "state.yaml",
+    )
+
+    async with app.run_test():
+        await app.handle_user_message("/models")
+        await app.handle_user_message("/models")
+
+        assert len(app.query(".model-menu")) == 1
 
 
 @pytest.mark.asyncio

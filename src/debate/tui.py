@@ -178,7 +178,7 @@ class DebateApp(App):
     }
 
     TurnDisplay.thinking.pulse-on {
-        border: heavy #6b5f8e;
+        border: heavy #ab9de0;
     }
 
     TurnDisplay.finished {
@@ -535,8 +535,16 @@ class DebateApp(App):
             return
         self.model_selection_active = True
         debate_view = self.query_one("#debate-view", DebateView)
-        menu = Static(self.model_menu_text(), classes="model-menu", id="model-menu-panel")
-        debate_view.mount(menu)
+        # Re-opening the picker refreshes the panel in place. Removing and
+        # re-mounting cannot work here: Widget.remove() only posts a Prune
+        # message, so the old panel is still mounted when the new one mounts
+        # and Textual raises DuplicateIds.
+        menu_text = self.model_menu_text()
+        existing = debate_view.query("#model-menu-panel")
+        if existing:
+            existing.last().update(menu_text)
+        else:
+            debate_view.mount(Static(menu_text, classes="model-menu", id="model-menu-panel"))
         debate_view.scroll_end(animate=False)
         self.query_one(
             "#user-input", Input
@@ -637,14 +645,26 @@ class DebateApp(App):
 
     def model_menu_text(self) -> str:
         model_names = self.available_model_names()
+        width = max(len(name) for name in model_names)
+
         lines = [
-            "Select models: type two to five numbers, e.g. 1 2 5",
+            "Select models: type two to five numbers in agent order, e.g. 1 2 5",
+            "The first number becomes Agent A, the second Agent B, and so on.",
             "",
-            "Agent A                 Agent B                 Agent C                 Agent D                 Agent E",
         ]
         for index, model_name in enumerate(model_names, 1):
-            prefix = f"{index:>2}. {model_name:<18}"
-            lines.append(f"{prefix} {prefix} {prefix} {prefix} {index:>2}. {model_name}")
+            if model_name == OFF_MODEL_NAME:
+                description = "disables a slot"
+            else:
+                description = self.models_yaml["workers"][model_name].get("description", "")
+            lines.append(f"{index:>2}. {model_name:<{width}}  {description}".rstrip())
+
+        current = [
+            f"{agent_id}={runner.name}"
+            for agent_id, runner in sorted(self.orchestrator.agent_runners.items())
+        ]
+        if current:
+            lines += ["", "Currently: " + ", ".join(current)]
         return "\n".join(lines)
 
     async def run_debate(self):
