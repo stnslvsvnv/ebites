@@ -174,6 +174,11 @@ the exact model list it asked for.
 
 ## Output
 
+Reaching consensus writes `.debate/tmp/debate-{session_id}/consensus.md` on its
+own — the TUI notifies you with the path — so the agreed answer survives even if
+you never run `/save`. `/save` (or `Ctrl+S`) additionally writes the full
+transcript to `.debate/tmp/debate-{session_id}/transcript.md`.
+
 Saved transcripts include:
 
 - the initial prompt
@@ -182,6 +187,8 @@ Saved transcripts include:
 - timestamps and selected model names
 
 Raw output, when enabled, is saved under `.debate/tmp/debate-{session_id}/raw/`.
+Session directories holding a `consensus.md` or `transcript.md` are kept; the
+rest are pruned on the next launch.
 
 ## How It Works
 

@@ -649,6 +649,57 @@ def test_cleanup_preserves_saved_debate_session_dir(monkeypatch, tmp_path):
     assert transcript_path.exists()
 
 
+def test_save_consensus_writes_artifact_and_survives_cleanup(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    orchestrator = DebateOrchestrator(
+        model_a_config=_worker("deepseek-pro"),
+        model_b_config=_worker("codex"),
+        initial_prompt="Original task",
+    )
+    orchestrator.finalize_turn("A", "First answer")
+    orchestrator.finalize_turn("B", "Second answer")
+    orchestrator.finalize_turn("A", "Third answer")
+    orchestrator.finalize_turn("B", "CONSENSUS: agreed outcome")
+    session_dir = orchestrator.session_dir
+
+    consensus_path = orchestrator.save_consensus()
+    orchestrator.cleanup()
+
+    assert consensus_path == session_dir / "consensus.md"
+    assert consensus_path.exists()
+    assert session_dir.exists()
+    consensus = consensus_path.read_text(encoding="utf-8")
+    assert "Original task" in consensus
+    assert "CONSENSUS: agreed outcome" in consensus
+
+
+def test_save_consensus_returns_none_without_accepted_consensus(tmp_path):
+    orchestrator = DebateOrchestrator(
+        model_a_config=_worker("deepseek-pro"),
+        model_b_config=_worker("codex"),
+        initial_prompt="Task",
+    )
+    orchestrator.session_dir = tmp_path
+    orchestrator.finalize_turn("A", "Just an answer")
+
+    assert orchestrator.save_consensus() is None
+    assert not (tmp_path / "consensus.md").exists()
+
+
+def test_prune_keeps_debate_dirs_holding_a_consensus(tmp_path):
+    tmp_root = tmp_path / ".debate" / "tmp"
+    saved = tmp_root / "debate-consensus-only"
+    stale = tmp_root / "debate-stale"
+    for path in (saved, stale):
+        path.mkdir(parents=True)
+    (saved / "consensus.md").write_text("CONSENSUS: keep me", encoding="utf-8")
+
+    removed = prune_unsaved_debate_tmp(tmp_root, is_session_active=lambda name: False)
+
+    assert removed == [stale]
+    assert saved.exists()
+
+
 def test_reset_removes_previous_unsaved_debate_session_dir(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     orchestrator = DebateOrchestrator(

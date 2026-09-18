@@ -727,6 +727,9 @@ class DebateApp(App):
             if not was_interrupted and self.orchestrator.can_accept_consensus(final_output):
                 debate_view.show_consensus()
                 self.notify_consensus()
+                consensus_path = self.orchestrator.save_consensus()
+                if consensus_path:
+                    self.notify(f"Consensus saved to {consensus_path}", timeout=10)
                 self.show_consensus_actions()
                 break
 

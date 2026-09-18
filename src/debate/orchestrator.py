@@ -15,6 +15,7 @@ from .runner import ModelProcess, ModelRunner
 
 ALL_AGENT_IDS = ("A", "B", "C", "D", "E")
 AGENT_IDS = ALL_AGENT_IDS
+SAVED_ARTIFACTS = ("transcript.md", "consensus.md")
 
 
 def prune_unsaved_debate_tmp(
@@ -33,7 +34,7 @@ def prune_unsaved_debate_tmp(
     for session_dir in sorted(root.glob("debate-*")):
         if not session_dir.is_dir():
             continue
-        if (session_dir / "transcript.md").exists():
+        if any((session_dir / artifact).exists() for artifact in SAVED_ARTIFACTS):
             continue
         if active_checker(session_dir.name):
             continue
@@ -110,7 +111,8 @@ class DebateOrchestrator:
         self.initial_prompt: str | None = None
         self.session_id = ""
         self.session_dir = Path()
-        self.transcript_saved = False
+        self.session_saved = False
+        self.consensus_answer: str | None = None
         self.reset(initial_prompt=initial_prompt)
 
     @property
@@ -153,7 +155,8 @@ class DebateOrchestrator:
         self.session_id = str(uuid.uuid4())[:8]
         self.session_dir = Path(f".debate/tmp/debate-{self.session_id}")
         self.session_dir.mkdir(parents=True, exist_ok=True)
-        self.transcript_saved = False
+        self.session_saved = False
+        self.consensus_answer: str | None = None
         self.initial_prompt = initial_prompt.strip() if initial_prompt else None
         self.conversation_history.clear()
         self.agent_turn_count = 0
@@ -349,7 +352,10 @@ Original task: {self.initial_prompt}
         if agent_id in self.active_agent_ids:
             self.agent_turn_count += 1
         self.active_processes.pop(agent_id, None)
-        return final_answer + suffix
+        result = final_answer + suffix
+        if not interrupted and self.can_accept_consensus(result):
+            self.consensus_answer = final_answer
+        return result
 
     def extract_final_answer(self, response: str) -> str:
         matches = list(self.FINAL_ANSWER_PATTERN.finditer(response))
@@ -433,7 +439,39 @@ Date: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
             transcript += "---\n\n"
 
         filepath.write_text(transcript, encoding="utf-8")
-        self.transcript_saved = True
+        self.session_saved = True
+        return filepath
+
+    def save_consensus(self, filepath: Path | None = None) -> Path | None:
+        """Write the accepted consensus on its own, next to the transcript.
+
+        Returns None while no consensus has been accepted, so callers can treat
+        the artifact as optional.
+        """
+
+        if not self.consensus_answer:
+            return None
+        if filepath is None:
+            filepath = self.session_dir / "consensus.md"
+        filepath.parent.mkdir(parents=True, exist_ok=True)
+        filepath.write_text(
+            f"""# Debate Consensus
+Session ID: {self.session_id}
+Date: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+
+## Initial Prompt
+{self.initial_prompt or "(not started)"}
+
+## Agents
+{self._transcript_agents()}
+
+## Consensus
+
+{self.consensus_answer}
+""",
+            encoding="utf-8",
+        )
+        self.session_saved = True
         return filepath
 
     def cleanup(self) -> None:
@@ -451,7 +489,7 @@ Date: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
         self._discard_unsaved_session_dir()
 
     def _discard_unsaved_session_dir(self) -> None:
-        if self.transcript_saved or not self.session_dir.exists():
+        if self.session_saved or not self.session_dir.exists():
             return
         try:
             self.session_dir.resolve().relative_to(Path(".debate/tmp").resolve())
